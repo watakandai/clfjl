@@ -1,0 +1,44 @@
+runTime: 1
+goalThreshold: 3
+start: [-90, -90, 1.570795]
+goal: [90, -90, 0]
+xBound: [-100, 100]
+yBound: [-100, 100]
+controlDurationBound: [1, 1]
+propagationStepSize: 1
+planner: "SST"
+objective: "PathLength"
+file: "path.txt"
+obstacles:
+  # -
+  #   type: "Square"
+  #   x: -70.0
+  #   y: 50.0
+  #   l: 40.0
+  # -
+  #   type: "Square"
+  #   x: 70.0
+  #   y: 60.0
+  #   l: 40.0
+
+dynamics:
+  1:
+    A: [[1, 0, 0],
+        [0, 1, 0],
+        [0, 0, 0]]
+    b: [10, 0, 0]
+  2:
+    A: [[1, 0, 0],
+        [0, 1, 0],
+        [0, 0, 0]]
+    b: [0, 10, 1.570795]
+  3:
+    A: [[1, 0, 0],
+        [0, 1, 0],
+        [0, 0, 0]]
+    b: [-10, 0, 3.14159]
+  4:
+    A: [[1, 0, 0],
+        [0, 1, 0],
+        [0, 0, 0]]
+    b: [0, -10, -1.570795]
