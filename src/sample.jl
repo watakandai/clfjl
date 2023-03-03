@@ -39,62 +39,6 @@ function toObstacleString(o)
 end
 
 
-function sample(wit_cls, witness, Dpieces, nDpieces, M, execPath, config)
-
-    # TODO: if the witness is in unsafe region, return.
-    if !isnothing(config["obstacles"])
-        for o in config["obstacles"]
-            if o["x"] - o["l"]/2 <= witness[1] &&\
-            witness[1] <= o["x"] + o["l"]/2 &&\
-            o["y"] - o["l"]/2 <= witness[2] &&\
-            witness[2] <= o["y"] + o["l"]/2
-            return
-            end
-        end
-    end
-
-    tempConfig = deepcopy(config)
-    tempConfig["start"] = witness
-    outputStr = callOracle(execPath, tempConfig)
-
-    if contains(outputStr, "Found a solution")
-        filepath = joinpath(pwd(), "path.txt")
-        data = readdlm(filepath)
-        nData = size(data, 1)
-
-        X = data[1:end-1, 1:3]
-        X′ = data[2:end, 1:3]
-        Φ = X′[:, 3]
-
-        orientToMode = Dict(0.00 => 1,
-                            1.57 => 2,
-                            3.14 => 3,
-                            -3.14 => 3,
-                            -1.57 => 4)
-
-        for i in 1:nData-1
-
-            x = X[i, :]
-            x′ = X′[i, :]
-            orient = Φ[i]
-            orient = round(Φ[i], digits=2)
-            q = orientToMode[orient]
-            normOfWitness = norm(x, 1)
-
-            img_cls = [IT_[] for q in 1:M]
-            for (k, piece) in enumerate(Dpieces)
-                flow = piece.flows[q]
-                α = normOfWitness * (1 + nDpieces[k][q])
-                push!(img_cls[q], Image(α, x′, flow))
-            end
-            push!(wit_cls, [Witness(x, img_cls)])
-        end
-    else
-        DomainError("Path Planner could not find any solution")
-    end
-end
-
-
 function sampleTrajectory(counterExamples, samplePoint, config, params, hybridSystem, workspace)
 
     # if the witness is in unsafe region, return.
