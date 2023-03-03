@@ -106,7 +106,14 @@ function sampleTrajectory(counterExamples, samplePoint, config, params, hybridSy
 
     tempConfig = deepcopy(config)
     tempConfig["start"] = samplePoint
-    outputStr = callOracle(params.execPath, tempConfig)
+    outputStr = ""
+    for orient in [0, 1.57, 3.14, -1.57]
+        tempConfig["start"][3] = orient
+        outputStr = callOracle(params.execPath, tempConfig)
+        if contains(outputStr, "Found a solution")
+            break
+        end
+    end
 
     if contains(outputStr, "Found a solution")
         filepath = params.pathFilePath
@@ -136,9 +143,15 @@ function sampleTrajectory(counterExamples, samplePoint, config, params, hybridSy
             normOfWitness = norm(x, 1)
             α = normOfWitness * (1 + opnorm(dynamics.A, 1))
 
-            push!(counterExamples, CounterExample(x, α, dynamics, x′))
+            isTerminal = i == nData-1
+            isUnsafe = false
+            push!(counterExamples, CounterExample(x, α, dynamics, x′, isTerminal, isUnsafe))
         end
     else
-        DomainError("Path Planner could not find any solution")
+        dynamics = hybridSystem.dynamics[1]
+        isTerminal = false
+        isUnsafe = true
+        push!(counterExamples, CounterExample(samplePoint, 0, dynamics, samplePoint, isTerminal, isUnsafe))
+        # throw(DomainError("Path Planner could not find any solution", outputStr))
     end
 end

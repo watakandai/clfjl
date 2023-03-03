@@ -14,7 +14,10 @@ function synthesizeCLF(
     params,
     hybridSystem,
     workspace,
-    solver)
+    solver,
+    filedir,
+    callback_fcn=(args...) -> nothing,
+    callback_fcn2=(args...) -> nothing)
 
     counterExamples::Vector{CounterExample} = []
     # Start with either Sampling or Generate a candidate Lyapunov function from workspace bounds
@@ -30,9 +33,9 @@ function synthesizeCLF(
             break
         end
 
-        lfs, genLyapunovGap = generateCandidateCLF(counterExamples, params, hybridSystem.numDim, solver)
+        lfs, genLyapunovGap = generateCandidateCLF(counterExamples, config, params, hybridSystem.numDim, solver)
         params.do_print && println("|-- Generator Lyapunov Gap: ", genLyapunovGap)
-        if genLyapunovGap < params.maxLyapunovGapForGenerator
+        if genLyapunovGap < params.thresholdLyapunovGapForGenerator
             println("Controller infeasible")
             return CONTROLLER_INFEASIBLE, []
         end
@@ -40,21 +43,26 @@ function synthesizeCLF(
         x, verLyapunovGap = verifyCandidateCLF(
             counterExamples::Vector{CounterExample},
             hybridSystem::HybridSystem,
-            lfs::Vector{<:AbstractVector},
+            lfs::Vector{Tuple{Vector{Float64}, Float64}},
             params::Parameters,
             workspace::Workspace,
             solver
         )
 
-        @assert norm(x, Inf) ≤ params.maxXNorm
+        callback_fcn(iter, config, counterExamples, hybridSystem, lfs, x, "", filedir)
+
+        # @assert norm(x, Inf) ≤ params.maxXNorm
 
         params.do_print && println("|-- CE: ", x, ", ", verLyapunovGap)
-        if verLyapunovGap ≤ params.maxLyapunovGapForVerifier
+        # if verLyapunovGap ≤ params.maxLyapunovGapForVerifier
+        if verLyapunovGap < params.thresholdLyapunovGapForVerifier
             println("Valid controller: terminated")
             return CONTROLLER_FOUND, lfs
         end
 
-        sampleTrajectory(counterExamples, samplePoint, config, params, hybridSystem, workspace)
+        sampleTrajectory(counterExamples, x, config, params, hybridSystem, workspace)
+
+        callback_fcn2(iter, config, counterExamples, hybridSystem, lfs, x, "afterSampling", filedir)
     end
     return MAX_ITER_REACHED, lfs_init_f
 end
@@ -129,3 +137,4 @@ function learn_controller(
     end
     return MAX_ITER_REACHED, lfs_init_f
 end
+

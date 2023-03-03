@@ -46,6 +46,8 @@ struct CounterExample
     α::Float64
     dynamics::Dynamics
     y::Vector{Float64}
+    isTerminal::Bool
+    isUnsafe::Bool
 end
 
 struct Rectangle{VT}
