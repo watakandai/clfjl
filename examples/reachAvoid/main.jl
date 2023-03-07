@@ -53,8 +53,8 @@ params = clfjl.Parameters(
     config["start"],
     15,
     100,
-    100,
-    100,
+    1,
+    1,
     1e-5,
     1e-5,
     true

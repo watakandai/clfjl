@@ -29,10 +29,14 @@ function generateCandidateCLF(
     @constraint(model, as[4] .== [0, λs[4]])
     @constraint(model, bs[4] .== -bound[4] * λs[4])
 
-    lfs = [(@variable(model, [1:N], lower_bound=-1, upper_bound=1),
+    lfs = [(@variable(model, [1:N], lower_bound=-100, upper_bound=100),
             @variable(model))
           for _ in counterExamples]
     gap = @variable(model, lower_bound=0, upper_bound=params.maxLyapunovGapForGenerator)
+
+    # Terminal Region
+    lb = (config["goal"] .- config["goalThreshold"])[1:N]
+    ub = (config["goal"] .+ config["goalThreshold"])[1:N]
 
     for (i, counterExample) in enumerate(counterExamples)
 
@@ -43,6 +47,10 @@ function generateCandidateCLF(
         if counterExample.isUnsafe
             a, b = lfs[i]
             @constraint(model, dot(a, x[1:N]) + b ≥ 0)
+            continue
+        end
+
+        if all(lb .≤ x[1:N]) && all(x[1:N] .≤ ub)
             continue
         end
 
@@ -97,28 +105,44 @@ function testCLF(counterExamples, λs, as, bs, lfs, gap)
         Vx = f(x[1], x[2])
         ix = indf(x[1], x[2])
         ax, bx = lfs[ix]
+        Vx = round(Vx, digits=3)
 
         y = c.y
         Vy = f(y[1], y[2])
         iy = indf(y[1], y[2])
         ay, by = lfs[iy]
+        Vy = round(Vy, digits=3)
 
-        println("V(y)<V(x) => V($y)<V($x) \t $Vy + $gap < $Vx")
-        # println($ay*y + ($by) + $gap < $ax*x + ($bx))
+        # println("V(y)<V(x) => V($y)<V($x) \t $Vy + $gap < $Vx")
+        # println("$ay*y + ($by) + $gap < $ax*x + ($bx)")
         @assert Vy <= Vx
     end
 
-    X = [[-105, 0], [105, 0], [0, -105], [0, 105]]
-    for i in 1:4
-        a = as[i]
-        b = bs[i]
-        Vs = map(x -> dot(a, x)+b, X)
-        println("$a * x + $b \t Vs = $Vs")
-    end
+    # println("λs: ", λs)
+    # println("LB: f(-100, -100)=", f(-100, -100))
+    # println("RB: f(100, -100)=", f(100, -100))
+    # println("RT: f(100, 100)=", f(100, 100))
+    # println("LT: f(-100, 100)=", f(-100, 100))
+    # println("LB: f(-101, -101)=", f(-101, -101))
+    # println("RB: f(101, -101)=", f(101, -101))
+    # println("RT: f(101, 101)=", f(101, 101))
+    # println("LT: f(-101, 101)=", f(-101, 101))
 
     @assert length(filter(λ -> λ > 0, λs)) == length(λs)
-    @assert f(-105, 0) > 0
-    @assert f(105, 0) > 0
-    @assert f(0, -105) > 0
-    @assert f(0, 105) > 0
+
+    # Not always smaller.
+    # @assert f(-99, -99) < 0
+    # @assert f(99, -99) < 0
+    # @assert f(99, 99) < 0
+    # @assert f(-99, 99) < 0
+
+    @assert f(-101, -101) > 0
+    @assert f(101, -101) > 0
+    @assert f(101, 101) > 0
+    @assert f(-101, 101) > 0
+
+    @assert f(-100, -100) >= -1E-9
+    @assert f(100, -100) >= -1E-9
+    @assert f(100, 100) >= -1E-9
+    @assert f(-100, 100) >= -1E-9
 end

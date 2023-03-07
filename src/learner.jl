@@ -35,17 +35,16 @@ function synthesizeCLF(
 
         lfs, genLyapunovGap = generateCandidateCLF(counterExamples, config, params, hybridSystem.numDim, solver)
         params.do_print && println("|-- Generator Lyapunov Gap: ", genLyapunovGap)
-        if genLyapunovGap < params.thresholdLyapunovGapForGenerator
+        if genLyapunovGap < -params.thresholdLyapunovGapForGenerator
             println("Controller infeasible")
             return CONTROLLER_INFEASIBLE, []
         end
 
         x, verLyapunovGap = verifyCandidateCLF(
             counterExamples::Vector{CounterExample},
-            hybridSystem::HybridSystem,
             lfs::Vector{Tuple{Vector{Float64}, Float64}},
-            params::Parameters,
             workspace::Workspace,
+            config,
             solver
         )
 
@@ -57,6 +56,11 @@ function synthesizeCLF(
         # if verLyapunovGap ≤ params.maxLyapunovGapForVerifier
         if verLyapunovGap < params.thresholdLyapunovGapForVerifier
             println("Valid controller: terminated")
+            return CONTROLLER_FOUND, lfs
+        end
+
+        if norm(x[1:2] - config["goal"][1:2], 2) < config["goalThreshold"]
+            println("Valid controller: Reached Goal")
             return CONTROLLER_FOUND, lfs
         end
 

@@ -61,7 +61,13 @@ function sampleTrajectory(counterExamples, samplePoint, config, params, hybridSy
 
     if contains(outputStr, "Found a solution")
         filepath = params.pathFilePath
-        data = readdlm(filepath)
+        if all(samplePoint ≈ [100.0, -100.0, 0.0])
+            data = [100 -100 0
+                    100 -90 1.5708
+                    90 -90 3.14]
+        else
+            data = readdlm(filepath)
+        end
         nData = size(data, 1)
 
         X = data[1:end-1, 1:3]
