@@ -5,9 +5,11 @@ version = "0.1.0"
 
 [deps]
 Deldir = "64db5801-a3ae-51a7-b7d2-a0a5f0813e47"
+DelimitedFiles = "8bb1440f-4735-579b-a4ab-409b98df4dab"
 GeometricalPredicates = "fd0ad045-b25c-564e-8f9c-8ef5c5f21267"
 GeometryBasics = "5c1252a2-5f33-56bf-86c9-59e7332b4326"
 Gurobi = "2e9cd046-0924-5485-92f1-d5272153d98b"
+IterTools = "c8e1da08-722c-5040-9ed9-7db0dc04731e"
 JuMP = "4076af6c-e467-56ae-b986-b466b2749572"
 LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
 PyCall = "438e738f-606a-5dbb-bf0a-cddfbfd45ab0"
