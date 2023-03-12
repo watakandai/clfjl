@@ -4,69 +4,59 @@
     MAX_ITER_REACHED = 2
 end
 
-const VT_ = Vector{Float64}
-const IT_ = Image{Float64,VT_,Flow{Matrix{Float64}, Vector{Float64}}}
-const WT_ = Witness{VT_,Vector{Vector{IT_}}}
-
-
-function synthesizeCLF(
-    config,
-    params,
-    hybridSystem,
-    workspace,
-    solver,
-    filedir,
-    callback_fcn=(args...) -> nothing,
-    callback_fcn2=(args...) -> nothing)
+"Synthesize Polyhedral Control Lyapunov functions through Sampling Counter Examples"
+function synthesizeCLF(params::Parameters,
+                       env::Env,
+                       solver,
+                       callback_fcn::Function=(args...) -> nothing)::Tuple{StatusCode, Vector}
 
     counterExamples::Vector{CounterExample} = []
-    # Start with either Sampling or Generate a candidate Lyapunov function from workspace bounds
-    sampleTrajectory(counterExamples, params.startPoint, config, params, hybridSystem, workspace)
+    totalSamplingTime = 0.0
+    totalPlotTime = 0.0
+    x = params.startPoint
 
-    iter = 0
+    iter::Integer = 0
     while true
 
         iter += 1
-        params.do_print && println("Iter: ", iter, " - ncl: ", length(counterExamples))
+        params.print && println("Sampling ...")
+        t = @elapsed sampleTrajectory(counterExamples, x, params, env)
+        totalSamplingTime += t
+
+        params.print && println("Iter: ", iter, " - ncl: ", length(counterExamples))
         if iter > params.maxIteration
             println("Max iter exceeded: ", iter)
             break
         end
 
-        lfs, genLyapunovGap = generateCandidateCLF(counterExamples, config, params, hybridSystem.numDim, solver)
-        params.do_print && println("|-- Generator Lyapunov Gap: ", genLyapunovGap)
-        if genLyapunovGap < -params.thresholdLyapunovGapForGenerator
+        (lfs::Vector,
+         genLyapunovGap::Real) = generateCandidateCLF(counterExamples,
+                                                      params,
+                                                      env,
+                                                      solver)
+
+        t = @elapsed callback_fcn(iter, counterExamples, env, params, lfs)
+        totalPlotTime += t
+
+        params.print && println("|-- Generator Lyapunov Gap: ", genLyapunovGap)
+        if genLyapunovGap < params.thresholdLyapunovGapForGenerator
             println("Controller infeasible")
             return CONTROLLER_INFEASIBLE, []
         end
 
-        x, verLyapunovGap = verifyCandidateCLF(
-            counterExamples::Vector{CounterExample},
-            lfs::Vector{Tuple{Vector{Float64}, Float64}},
-            workspace::Workspace,
-            config,
-            solver
-        )
+        (x::Vector{Real},
+         verLyapunovGap::Real) = verifyCandidateCLF(counterExamples,
+                                                    lfs,
+                                                    params,
+                                                    env,
+                                                    solver)
 
-        callback_fcn(iter, config, counterExamples, hybridSystem, lfs, x, "", filedir)
-
-        # @assert norm(x, Inf) ≤ params.maxXNorm
-
-        params.do_print && println("|-- CE: ", x, ", ", verLyapunovGap)
-        # if verLyapunovGap ≤ params.maxLyapunovGapForVerifier
-        if verLyapunovGap < params.thresholdLyapunovGapForVerifier
+        params.print && println("|-- CE: ", x, ", ", verLyapunovGap)
+        if verLyapunovGap < params.thresholdLyapunovGapForGenerator
             println("Valid controller: terminated")
             return CONTROLLER_FOUND, lfs
         end
 
-        if norm(x[1:2] - config["goal"][1:2], 2) < config["goalThreshold"]
-            println("Valid controller: Reached Goal")
-            return CONTROLLER_FOUND, lfs
-        end
-
-        sampleTrajectory(counterExamples, x, config, params, hybridSystem, workspace)
-
-        callback_fcn2(iter, config, counterExamples, hybridSystem, lfs, x, "afterSampling", filedir)
     end
-    return MAX_ITER_REACHED, lfs_init_f
+    return MAX_ITER_REACHED, []
 end

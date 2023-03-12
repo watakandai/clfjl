@@ -1,10 +1,10 @@
 using DelimitedFiles
 
 
-function callOracle(execPath, config)
-    optionStrs = Vector{String}[]
+function callOracle(execPath::String, config::Dict{Any, Any})::String
+    optionStrs::Vector{String} = Vector{String}[]
     if !isnothing(config["obstacles"])
-        optionStrs::Vector{String} = [toObstacleString(o) for o in config["obstacles"]]
+        optionStrs = [toObstacleString(o) for o in config["obstacles"]]
         prepend!(optionStrs, ["--obstacles"])
     end
 
@@ -20,13 +20,13 @@ function callOracle(execPath, config)
             append!(optionStrs, ["--$k", string(v)])
         end
     end
-    optionCmd = Cmd(optionStrs)
+    optionCmd::Cmd = Cmd(optionStrs)
     # println(`$execPath $optionCmd`)
     return read(`$execPath $optionCmd`, String)
 end
 
 
-function toObstacleString(o)
+function toObstacleString(o::Dict{Any, Any})::String
     x = o["x"]
     y = o["y"]
     if o["type"] == "Circle"
@@ -39,69 +39,84 @@ function toObstacleString(o)
 end
 
 
-function sampleTrajectory(counterExamples, samplePoint, config, params, hybridSystem, workspace)
+function sampleTrajectory(counterExamples::Vector{CounterExample},
+                          samplePoint::Vector{Real},
+                          params::Parameters,
+                          env::Env)
 
+    N::Integer = env.hybridSystem.numDim
     # if the witness is in unsafe region, return.
-    for o in workspace.obstacles
-        if o.lb ≤ samplePoint && samplePoint ≤ o.ub
+    for o in env.obstacles
+        if all(o.lb .≤ samplePoint[1:2]) && all(samplePoint[1:2] .≤ o.ub)
+            throw(DomainError(x, "Trying to sample in an obstacle region"))
             return
         end
     end
 
-    tempConfig = deepcopy(config)
+    tempConfig::Dict{Any, Any} = deepcopy(params.config)
     tempConfig["start"] = samplePoint
-    outputStr = ""
-    for orient in [0, 1.57, 3.14, -1.57]
-        tempConfig["start"][3] = orient
-        outputStr = callOracle(params.execPath, tempConfig)
-        if contains(outputStr, "Found a solution")
-            break
-        end
+    outputStr::String = ""
+
+    if abs(samplePoint[1]) < samplePoint[2]
+        orient = -1.57
+    elseif -abs(samplePoint[1]) > samplePoint[2]
+        orient = 1.57
+    elseif abs(samplePoint[2]) < samplePoint[1]
+        orient = 3.14
+    else
+        orient = 0
     end
+    tempConfig["start"][N] = orient
+    outputStr = callOracle(params.execPath, tempConfig)
+    # for orient in [0, 1.57, 3.14, -1.57]
+    #     tempConfig["start"][N] = orient
+    #     outputStr = callOracle(params.execPath, tempConfig)
+    #     if contains(outputStr, "Found a solution")
+    #         break
+    #     end
+    # end
 
     if contains(outputStr, "Found a solution")
-        filepath = params.pathFilePath
-        if all(samplePoint ≈ [100.0, -100.0, 0.0])
-            data = [100 -100 0
-                    100 -90 1.5708
-                    90 -90 3.14]
-        else
-            data = readdlm(filepath)
-        end
-        nData = size(data, 1)
+        # println(outputStr)
+        filepath::String = params.pathFilePath
+        data = readdlm(filepath)
+        nData::Integer = size(data, 1)
 
-        X = data[1:end-1, 1:3]
-        X′ = data[2:end, 1:3]
-        Φ = X′[:, 3]
+        X::Matrix{Real} = data[1:end-1, 1:N]
+        X′::Matrix{Real} = data[2:end, 1:N]
+        Φ::Vector{Real} = X′[:, N]
 
-        orientToMode = Dict(0.00 => 1,
-                            1.57 => 2,
-                            3.14 => 3,
-                            -3.14 => 3,
-                            -1.57 => 4)
+        orientToMode::Dict{Real, Integer} = Dict(0.00 => 1,
+                                                 1.57 => 2,
+                                                 3.14 => 3,
+                                                 -3.14 => 3,
+                                                 -1.57 => 4)
 
         for i in 1:nData-1
 
-            x = X[i, :]
-            x′ = X′[i, :]
+            x::Vector{Real} = X[i, :]
+            x′::Vector{Real} = X′[i, :]
+            # println(x)
 
-            orient = Φ[i]
-            orient = round(Φ[i], digits=2)
-            q = orientToMode[orient]
-            dynamics = hybridSystem.dynamics[q]
+            orient::Real = round(Φ[i], digits=2)
+            q::Integer = orientToMode[orient]
+            dynamics::Dynamics = env.hybridSystem.dynamics[q]
 
-            normOfWitness = norm(x, 1)
-            α = normOfWitness * (1 + opnorm(dynamics.A, 1))
+            normOfWitness::Real = norm(x, 1)
+            α::Real = normOfWitness * (1 + opnorm(dynamics.A, 1))
 
-            isTerminal = i == nData-1
-            isUnsafe = false
+            isTerminal::Bool = i == nData-1
+            isUnsafe::Bool = false
             push!(counterExamples, CounterExample(x, α, dynamics, x′, isTerminal, isUnsafe))
+
+            # if i == nData-1
+            #     println(x′)
+            # end
         end
     else
-        dynamics = hybridSystem.dynamics[1]
+        dynamics = env.hybridSystem.dynamics[1]
         isTerminal = false
         isUnsafe = true
         push!(counterExamples, CounterExample(samplePoint, 0, dynamics, samplePoint, isTerminal, isUnsafe))
-        # throw(DomainError("Path Planner could not find any solution", outputStr))
     end
 end

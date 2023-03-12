@@ -1,7 +1,7 @@
 function checkSafeAndUnsafe(
         counterExamples::Vector{CounterExample},
-        lfs::Vector{Tuple{Vector{Float64}, Float64}},
-        workspace::Workspace,
+        lfs::LyapunovFunctions,
+        env::Env,
         solver
 )
     safeCounterExamples = filter(c->!c.isUnsafe, counterExamples)
@@ -14,8 +14,8 @@ function checkSafeAndUnsafe(
         maxV = @variable(model)
 
         # Constraint 1: x ∈ S
-        @constraint(model, x .≥ workspace.lb[1:N])
-        @constraint(model, x .≤ workspace.ub[1:N])
+        @constraint(model, x .≥ env.workspace.lb[1:N])
+        @constraint(model, x .≤ env.workspace.ub[1:N])
 
         # Constraint 2: x ∈ R_k
         # Voronoi Constraints s.t. x is contained in the same area as the witness
@@ -27,8 +27,7 @@ function checkSafeAndUnsafe(
 
         # Constraint 3: V(x) <= γ, if γ>0, then V(x)>0
         for lf in lfs
-            a, b = lf
-            valx = dot(a, x) + b
+            valx = takeImage(lf, x)
             # valx: -100 <= γ, γ=-100
             # valx: 100 <= γ, γ=100
             # The maximum V that satisfies all constraints is 100.
@@ -57,8 +56,8 @@ function checkSafeAndUnsafe(
         γ = @variable(model)
 
         # Constraint 1: x ∈ S
-        @constraint(model, x .≥ workspace.lb[1:N])
-        @constraint(model, x .≤ workspace.ub[1:N])
+        @constraint(model, x .≥ env.workspace.lb[1:N])
+        @constraint(model, x .≤ env.workspace.ub[1:N])
 
         # Constraint 2: x ∈ R_k
         # Voronoi Constraints s.t. x is contained in the same area as the witness
@@ -71,7 +70,7 @@ function checkSafeAndUnsafe(
         # Constraint 3: V_j(x)≥γ ∀j, If γ≤0 => V(x)≤0
         for lf in lfs
             a, b = lf
-            valx = dot(a, x) + b
+            valx = takeImage(lf, x)
             @constraint(model, valx ≥ γ)
         end
 
@@ -95,12 +94,14 @@ end
 
 function verifyCandidateCLF(
     counterExamples::Vector{CounterExample},
-    lfs::Vector{Tuple{Vector{Float64}, Float64}},
-    workspace::Workspace,
-    config,
-    solver)
+    lfs::LyapunovFunctions,
+    params::Parameters,
+    env::Env,
+    solver)::Tuple{Vector, Float64}
 
     N = 2
+
+    safe = isInitSetNegative(lfs, env, solver)
 
     maxGap = -1.0
     bestCounterExamplePoint = [.0, .0, .0]
@@ -112,15 +113,13 @@ function verifyCandidateCLF(
             continue
         end
 
-        inTerminal = isInTerminalRegion(counterExample, counterExamples, config, workspace, solver)
+        inTerminal = isInTerminalRegion(counterExample, counterExamples, env, solver)
 
         if inTerminal
             dim = Vector(1:N)
             opBoundInd = Vector(1:N)
             isLB = [true, false]
-            termLB = config["goal"][1:N] .- config["goalThreshold"]
-            termUB = config["goal"][1:N] .+ config["goalThreshold"]
-            bounds = [termLB, termUB]
+            bounds = [env.termSet.lb[1:N], env.termSet.ub[1:N]]
             for (idim, iopb) in Iterators.product(dim, opBoundInd)
                 (maxGap,
                  bestCounterExamplePoint,
@@ -128,8 +127,8 @@ function verifyCandidateCLF(
                     counterExample,
                     counterExamples,
                     lfs,
-                    workspace,
-                    config,
+                    params,
+                    env,
                     solver,
                     maxGap,
                     bestCounterExamplePoint,
@@ -143,8 +142,8 @@ function verifyCandidateCLF(
                 counterExample,
                 counterExamples,
                 lfs,
-                workspace,
-                config,
+                params,
+                env,
                 solver,
                 maxGap,
                 bestCounterExamplePoint,
@@ -154,30 +153,38 @@ function verifyCandidateCLF(
 
     if maxGap >= 0
         println("|--------------------------------------|")
-        println("Found a counterExample $bestCounterExamplePoint that satisfies V(y)>=V(x)")
-        # vertices = findVoronoiRegion(solver, workspace, bestCounterExample, counterExamples)
+        x = bestCounterExample.x
+        println("Found a counterExample $bestCounterExamplePoint that satisfies V(y)>=V(x) at $x")
+        # vertices = findVoronoiRegion(solver, env, bestCounterExample, counterExamples)
         # println("Searched Region: ", vertices)
-        # println(bestCounterExample.x, " -> ", bestCounterExample.y)
-        # println("By Taking Dynamics: ", bestCounterExample.dynamics)
+        x = bestCounterExamplePoint[1:N]
+        y = bestCounterExample.dynamics.A[1:N,1:N] * x + bestCounterExample.dynamics.b[1:N]
+        println(V(y, lfs), " >= ", V(x, lfs), " + $maxGap")
+        println("By Taking Dynamics: ", bestCounterExample.dynamics)
         println("|--------------------------------------|")
     end
 
     return bestCounterExamplePoint, maxGap
 end
 
+
 function _verifyCandidateCLF(
     counterExample::CounterExample,
     counterExamples::Vector{CounterExample},
-    lfs::Vector{Tuple{Vector{Float64}, Float64}},
-    workspace::Workspace,
-    config,
+    lfs::LyapunovFunctions,
+    params::Parameters,
+    env::Env,
     solver,
     maxGap,
     bestCounterExamplePoint,
     bestCounterExample,
-    dim=nothing, lb=nothing, bound=nothing
-)
+    dim=nothing, lb=nothing, bound=nothing)
+
     N = 2
+
+    termLB = env.termSet.lb[1:N]
+    termUB = env.termSet.ub[1:N]
+
     for lf in lfs
 
         model = solver()
@@ -185,8 +192,8 @@ function _verifyCandidateCLF(
         gap = @variable(model)
 
         # Constraint 1: x ∈ S
-        @constraint(model, x .≥ workspace.lb[1:N])
-        @constraint(model, x .≤ workspace.ub[1:N])
+        @constraint(model, x .≥ env.workspace.lb[1:N])
+        @constraint(model, x .≤ env.workspace.ub[1:N])
         if !isnothing(dim) && !isnothing(bound)
             if lb
                 @constraint(model, x[dim] .≤ bound)
@@ -207,12 +214,10 @@ function _verifyCandidateCLF(
         # It's suppose to be V(x') < V(x) but we want to find a counterexample,
         # such that V(x') >= V(x) + maxGap
         # Recall V(x) = max_j aj^T * x + bj,
-        x′ = counterExample.dynamics.A[1:N,1:N]*x + counterExample.dynamics.b[1:N]
-        ay, by = lf
-        valy = dot(ay[1:N], x′) + by
+        x′ = counterExample.dynamics.A[1:N,1:N] * x + counterExample.dynamics.b[1:N]
+        valy = takeImage(lf, x′)
         for lf in lfs
-            ax, bx = lf
-            valx = dot(ax[1:N], x) + bx
+            valx = takeImage(lf, x)
             # There's only 1 valy. For example, we get
             # -10 >= -10 + gap,     => gap=0
             # -10 >= -30 + gap ,    => gap=20
@@ -231,12 +236,23 @@ function _verifyCandidateCLF(
             bestCounterExamplePoint[1:N] = value.(x)
             bestCounterExample = counterExample
         end
+
+        if primal_status(model) == FEASIBLE_POINT
+            if all(termLB .< value.(x)) && all(value.(x) .< termUB)
+                if lb
+                    println(">>>> BOUND: x[$dim] < $bound")
+                else
+                    println(">>>> BOUND: $bound < x[$dim]")
+                end
+                throw(DomainError(value.(x), "WHY!!!!!!!!!!!!!!!!!!!!"))
+            end
+        end
     end
     return maxGap, bestCounterExamplePoint, bestCounterExample
 end
 
 
-function findVoronoiRegion(solver, workspace, counterExample, counterExamples)
+function findVoronoiRegion(solver, env, counterExample, counterExamples)
 
     N = 2
     function solve(idim)
@@ -244,8 +260,8 @@ function findVoronoiRegion(solver, workspace, counterExample, counterExamples)
         model = solver()
         x = @variable(model, [1:N])
         # Constraint 1: x ∈ S
-        @constraint(model, x .≥ workspace.lb[1:N])
-        @constraint(model, x .≤ workspace.ub[1:N])
+        @constraint(model, x .≥ env.workspace.lb[1:N])
+        @constraint(model, x .≤ env.workspace.ub[1:N])
         # Constraint 2: x ∈ R_k
         # Voronoi Constraints s.t. x is contained in the same area as the witness
         for otherCounterExample in filter(x->x!=counterExample, counterExamples)
@@ -260,8 +276,8 @@ function findVoronoiRegion(solver, workspace, counterExample, counterExamples)
         model = solver()
         x = @variable(model, [1:N])
         # Constraint 1: x ∈ S
-        @constraint(model, x .≥ workspace.lb[1:N])
-        @constraint(model, x .≤ workspace.ub[1:N])
+        @constraint(model, x .≥ env.workspace.lb[1:N])
+        @constraint(model, x .≤ env.workspace.ub[1:N])
         # Constraint 2: x ∈ R_k
         # Voronoi Constraints s.t. x is contained in the same area as the witness
         for otherCounterExample in filter(x->x!=counterExample, counterExamples)
@@ -278,20 +294,18 @@ function findVoronoiRegion(solver, workspace, counterExample, counterExamples)
     return reduce(vcat, map(i->solve(i), 1:N); init=Vector{Vector{Float64}}())
 end
 
-function isInTerminalRegion(counterExample, counterExamples, config, workspace, solver)
-    # config
+
+function isInTerminalRegion(counterExample, counterExamples, env, solver)
     N = 2
-    termLB = config["goal"][1:N] .- config["goalThreshold"]
-    termUB = config["goal"][1:N] .+ config["goalThreshold"]
 
     model = solver()
     x = @variable(model, [1:N])
 
     # Constraint 1: x ∈ S
-    @constraint(model, x .≥ workspace.lb[1:N])
-    @constraint(model, x .≤ workspace.ub[1:N])
-    @constraint(model, x .≥ termLB)
-    @constraint(model, x .≤ termUB)
+    @constraint(model, x .≥ env.workspace.lb[1:N])
+    @constraint(model, x .≤ env.workspace.ub[1:N])
+    @constraint(model, x .≥ env.termSet.lb[1:N])
+    @constraint(model, x .≤ env.termSet.ub[1:N])
 
     # Constraint 2: x ∈ R_k
     # Voronoi Constraints s.t. x is contained in the same area as the witness
@@ -307,4 +321,51 @@ function isInTerminalRegion(counterExample, counterExamples, config, workspace, 
         return true
     end
     return false
+end
+
+
+function isInitSetNegative(lfs::LyapunovFunctions,
+                           env::Env,
+                           solver,
+                           N = 2)::Bool
+    currMaxV = -1
+    currMaxX = nothing
+
+    for lf in lfs
+        model = solver()
+        x = @variable(model, [1:N])
+        # maxV = @variable(model, upper_bound=1)
+        obj = @variable(model)
+
+        # Constraint 1: x ∈ I
+        @constraint(model, x .≥ env.initSet.lb[1:N])
+        @constraint(model, x .≤ env.initSet.ub[1:N])
+
+        # Constraint 3: V(x) <= γ, if γ>0, then V(x)>0
+        valx = takeImage(lf, x)
+        # valx: -100 <= γ, γ=-100
+        # valx: 100 <= γ, γ=100
+        # The maximum V that satisfies all constraints is 100.
+        # @constraint(model, valx <= maxV)
+        @constraint(model, valx >= obj)
+
+        @objective(model, Max, obj)
+        # @objective(model, Max, maxV)
+        optimize!(model)
+
+        if primal_status(model) == FEASIBLE_POINT
+            x = value.(x)
+            obj = objective_value(model)
+            if obj > currMaxV
+                currMaxV = obj
+                currMaxX = x
+            end
+        end
+    end
+
+    if currMaxV > 0
+        throw(DomainError(currMaxV, "∃x ∈ I s.t. Vx)>0. x=$currMaxX"))
+        return false
+    end
+    return true
 end

@@ -5,8 +5,10 @@ using JuMP
 
 
 struct Parameters
+    config::Dict{Any, Any}
     execPath::String
     pathFilePath::String
+    imgFileDir::String
     startPoint::Vector{Real}
     maxXNorm::Real
     maxIteration::Real
@@ -14,76 +16,64 @@ struct Parameters
     maxLyapunovGapForVerifier::Real
     thresholdLyapunovGapForGenerator::Real
     thresholdLyapunovGapForVerifier::Real
-    do_print::Bool
+    print::Bool
 end
 
-struct Obstacle
-    lb::Vector{Float64}
-    ub::Vector{Float64}
+struct HyperRectangle
+    lb::Vector{Real}
+    ub::Vector{Real}
 end
-
-struct Workspace
-    lb::Vector{Float64}
-    ub::Vector{Float64}
-    obstacles::Vector{Obstacle}
-end
-
 
 struct Dynamics
     A::Matrix{Float64}
     b::Vector{Float64}
-    numDim::Int64
+    numDim::Integer
 end
 
 struct HybridSystem
-    dynamics::Dict{Int64, Dynamics}
-    numMode::Int64
-    numDim::Int64
+    dynamics::Dict{Integer, Dynamics}
+    numMode::Integer
+    numDim::Integer
+end
+
+struct Env
+    # For generality, we'll keep I & T set as vectors,
+    # but generally they should be a single hyperrectagle.
+    # initSet::Vector{HyperRectangle}
+    # termSet::Vector{HyperRectangle}
+    initSet::HyperRectangle
+    termSet::HyperRectangle
+    workspace::HyperRectangle
+    obstacles::Vector{HyperRectangle}
+    hybridSystem::HybridSystem
 end
 
 struct CounterExample
-    x::Vector{Float64}
-    α::Float64
+    x::Vector{Real}
+    α::Real
     dynamics::Dynamics
-    y::Vector{Float64}
+    y::Vector{Real}
     isTerminal::Bool
     isUnsafe::Bool
 end
 
-struct Rectangle{VT}
-    lb::VT
-    ub::VT
+struct LyapunovFunction
+    a::Vector{Real}
+    b::Real
 end
 
-Base.in(rect::Rectangle, x) =
-    all(t -> t[1] ≤ t[2] ≤ t[3], zip(rect.lb, x, rect.ub))
-
-struct Flow{AT<:AbstractMatrix,BT<:AbstractVector}
-    A::AT
-    b::BT
+struct JuMPLyapunovFunction
+    a::Vector{VariableRef}
+    b::VariableRef
 end
 
-struct Piece{VFT<:Vector{<:Flow},RT<:Rectangle}
-    flows::VFT
-    rect::RT
-end
-
-struct Image{AT<:Real,YT<:AbstractVector,FT<:Flow}
-    α::AT
-    y::YT
-    flow::FT
-end
-
-struct Witness{XT<:AbstractVector,VVIT<:Vector{<:Vector{<:Image}}}
-    x::XT
-    img_cls::VVIT
-end
-
+LyapunovFunctions = Vector{LyapunovFunction}
 
 
 include("sample.jl")
 include("generator.jl")
 include("verifier.jl")
 include("learner.jl")
+include("controlLyapunovFunctions.jl")
 
 end # module

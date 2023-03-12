@@ -8,11 +8,16 @@ import YAML
 include("plotFunc.jl")
 
 using clfjl
+using Debugger
+
+const GUROBI_ENV = Gurobi.Env()
 EXECPATH = "/Users/kandai/Documents/projects/research/clf/build/main"
-CONFIGPATH = "examples/reachAvoid/config.yaml"
+CONFIGPATH = joinpath(@__DIR__, "config.yaml")
+# CONFIGPATH = joinpath(@__DIR__, "configWithObstacles.yaml")
 
 
-function getHybridSystemFromConfig(config)
+"Read the config and initialize clfjl.HybridSystem f(x)=A_ix+b"
+function getHybridSystemFromConfig(config::Dict{Any,Any})::clfjl.HybridSystem
     numMode = length(config["dynamics"])
     numDim = size(config["dynamics"][1]["A"], 1)
 
@@ -28,44 +33,75 @@ function getHybridSystemFromConfig(config)
 end
 
 
-function getWorkspaceFromConfig(config)
-    # lb = [config["xBound"][1], config["yBound"][1], -3.14]
-    # ub = [config["xBound"][2], config["yBound"][2], -3.14]
+"Read the config and initialize clfjl.Env"
+function getEnvFromConfig(config::Dict{Any,Any})::clfjl.Env
+    # TODO: Change config["goalThreshold"] -> config["startThreshold"]
+    # initSetLB = [-0.25, -0.25]
+    # initSetUB = [0.25, 0.25]
+    lb = [-0.75, -0.75]
+    ub = [-0.55, -0.55]
+    # lb = config["initSetLB"]
+    # ub = config["initSetUB"]
+    # initSet = [clfjl.HyperRectangle(lb, ub)]
+    initSet = clfjl.HyperRectangle(lb, ub)
+
+    lb = config["goal"] .- config["goalThreshold"]
+    ub = config["goal"] .+ config["goalThreshold"]
+    # termSet = [clfjl.HyperRectangle(lb, ub)]
+    termSet = clfjl.HyperRectangle(lb, ub)
+
     lb = [config["xBound"][1], config["yBound"][1]]
     ub = [config["xBound"][2], config["yBound"][2]]
+    workspace = clfjl.HyperRectangle(lb, ub)
 
-    obstacles = []
+    obstacles::Vector{clfjl.HyperRectangle} = []
     if !isnothing(config["obstacles"])
         for o in config["obstacles"]
             lb = [o["x"]-o["l"]/2, o["y"]-o["l"]/2]
             ub = [o["x"]+o["l"]/2, o["y"]+o["l"]/2]
-            push!(obstacles, clfjl.Obstacle(lb, ub))
+            push!(obstacles, clfjl.HyperRectangle(lb, ub))
         end
     end
-    return clfjl.Workspace(lb, ub, obstacles)
+
+    hybridSystem::clfjl.HybridSystem = getHybridSystemFromConfig(config)
+
+    return clfjl.Env(initSet, termSet, workspace, obstacles, hybridSystem)
 end
 
 
-config = YAML.load(open(CONFIGPATH))
-params = clfjl.Parameters(
-    EXECPATH,
-    joinpath(pwd(), "path.txt"),
-    config["start"],
-    15,
-    100,
-    1,
-    1,
-    1e-5,
-    1e-5,
-    true
-)
+function main(execPath, configPath)
+    config::Dict{Any, Any} = YAML.load(open(configPath))
 
-hybridSystem = getHybridSystemFromConfig(config)
-workspace = getWorkspaceFromConfig(config)
-const GUROBI_ENV = Gurobi.Env()
-solver() = Model(optimizer_with_attributes(() -> Gurobi.Optimizer(GUROBI_ENV), "OutputFlag"=>false))
-filedir = joinpath(@__DIR__, "output")
-# clfjl.synthesizeCLF(config, params, hybridSystem, workspace, solver, filedir, plotCLF, plotSamples)
-clfjl.synthesizeCLF(config, params, hybridSystem, workspace, solver, filedir, plotCLF)
+    params = clfjl.Parameters(
+        config,
+        execPath,
+        joinpath(pwd(), "path.txt"),
+        joinpath(@__DIR__, "output"),
+        config["start"],
+        15,
+        100,
+        10,
+        10,
+        1e-5,
+        1e-5,
+        true
+    )
+
+    env::clfjl.Env = getEnvFromConfig(config)
+
+    "Setup Gurobi"
+    solver() = Model(optimizer_with_attributes(() -> Gurobi.Optimizer(GUROBI_ENV),
+                                            "OutputFlag"=>false))
+
+    "Synthesize Control Lyapunov functions for the given env"
+    # t = @elapsed clfjl.synthesizeCLF(params, env, solver)
+    # println("Total Time: ", t)
+    clfjl.synthesizeCLF(params, env, solver, plotCLF)
+end
+
+# ------------------------------ Main ------------------------------ #
+main(EXECPATH, CONFIGPATH)
+# ------------------------------------------------------------------ #
+
 
 end # module
