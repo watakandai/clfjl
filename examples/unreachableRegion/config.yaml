@@ -8,6 +8,7 @@ controlDurationBound: [1, 1]
 propagationStepSize: 1
 planner: "SST"
 objective: "PathLength"
+# objective: "WeightedLengthAndClearanceCombo"
 file: "path.txt"
 obstacles:
   -

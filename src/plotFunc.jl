@@ -88,10 +88,10 @@ function toObstacleString(o)
 end
 
 
-function plotCLF(iter, counterExamples, env, params, lfs, filename="")
+function plotCLF(iter, counterExamples, regions, env, params, lfs, filename="")
 
     plot_env(env)
-
+    plotUnreachableRegion(regions, params, env)
     x = range(1.1*env.workspace.lb[1], 1.1*env.workspace.ub[1], length=100)
     y = range(1.1*env.workspace.lb[2], 1.1*env.workspace.ub[2], length=100)
     Vtemp(x_, y_) = clfjl.V([x_, y_], lfs)
@@ -118,8 +118,34 @@ function plotCLF(iter, counterExamples, env, params, lfs, filename="")
     if isnothing(params.imgFileDir)
         print(pwd())
     else
+        # mkdir(params.imgFileDir)
         filepath = joinpath(params.imgFileDir, "$filename$iter.png")
         savefig(filepath)
     end
-    nothing
+end
+
+
+function plotUnreachableRegion(regions, params, env)
+    for lfs in regions
+        for lf in lfs
+            xmin = env.workspace.lb[1]
+            xmax = env.workspace.ub[1]
+            ymin = env.workspace.lb[2]
+            ymax = env.workspace.ub[2]
+            if isapprox(lf.a[1], 0.0)
+                y = - lf.b / lf.a[2]
+                plot!([xmin, xmax], [y, y], color=:black, lw=2)
+            elseif isapprox(lf.a[2], 0.0)
+                x = - lf.b / lf.a[1]
+                plot!([x, x], [ymin, ymax], color=:black, lw=2)
+            else
+                tilt = - lf.a[1] / lf.a[2]
+                bias = lf.b / lf.a[2]
+                f(x) = (- lf.b - lf.a[1] * x) / lf.a[2]
+                x = range(env.workspace.lb[1], env.workspace.ub[1], length=100)
+                y = f.(x)
+                plot!(x, y, color=:black, lw=2)
+            end
+        end
+    end
 end

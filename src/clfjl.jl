@@ -2,9 +2,9 @@ module clfjl
 
 using LinearAlgebra
 using JuMP
+import Base.@kwdef
 
-
-struct Parameters
+@kwdef struct Parameters
     config::Dict{Any, Any}
     execPath::String
     pathFilePath::String
@@ -17,6 +17,7 @@ struct Parameters
     thresholdLyapunovGapForGenerator::Real
     thresholdLyapunovGapForVerifier::Real
     print::Bool
+    padding::Bool
 end
 
 struct HyperRectangle
@@ -75,5 +76,7 @@ include("generator.jl")
 include("verifier.jl")
 include("learner.jl")
 include("controlLyapunovFunctions.jl")
+include("plotFunc.jl")
+include("prechecker.jl")
 
 end # module

@@ -27,14 +27,27 @@ end
 
 
 function toObstacleString(o::Dict{Any, Any})::String
-    x = o["x"]
-    y = o["y"]
     if o["type"] == "Circle"
+        x = o["x"]
+        y = o["y"]
         r = o["r"]
         return "Circle,$x,$y,$r"
     elseif o["type"] == "Square"
+        x = o["x"]
+        y = o["y"]
         l = o["l"]
         return "Square,$x,$y,$l"
+    elseif o["type"] == "Convex"
+        retStrings = ["Convex"]
+        numConstraint = length(o["b"])
+        for iConst in 1:numConstraint
+            a = o["A"][iConst, :]
+            b = o["b"][iConst]
+            vec = vcat(a, b)
+            vecString = join(map(v->string(v), vec), ",")
+            push!(retStrings, vecString)
+        end
+        return join(retStrings, ",")
     end
 end
 
@@ -48,7 +61,11 @@ function sampleTrajectory(counterExamples::Vector{CounterExample},
     # if the witness is in unsafe region, return.
     for o in env.obstacles
         if all(o.lb .≤ samplePoint[1:2]) && all(samplePoint[1:2] .≤ o.ub)
-            throw(DomainError(x, "Trying to sample in an obstacle region"))
+            # throw(DomainError(samplePoint, "Trying to sample in an obstacle region"))
+            isUnsafe = true
+            isTerminal = false
+            dynamics = env.hybridSystem.dynamics[1]
+            push!(counterExamples, CounterExample(samplePoint, 0, dynamics, samplePoint, isTerminal, isUnsafe))
             return
         end
     end
@@ -87,6 +104,7 @@ function sampleTrajectory(counterExamples::Vector{CounterExample},
         Φ::Vector{Real} = X′[:, N]
 
         orientToMode::Dict{Real, Integer} = Dict(0.00 => 1,
+                                                -0.00 => 1,
                                                  1.57 => 2,
                                                  3.14 => 3,
                                                  -3.14 => 3,
@@ -100,7 +118,7 @@ function sampleTrajectory(counterExamples::Vector{CounterExample},
 
             orient::Real = round(Φ[i], digits=2)
             q::Integer = orientToMode[orient]
-            dynamics::Dynamics = env.hybridSystem.dynamics[q]
+            dynamics = env.hybridSystem.dynamics[q]
 
             normOfWitness::Real = norm(x, 1)
             α::Real = normOfWitness * (1 + opnorm(dynamics.A, 1))

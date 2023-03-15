@@ -1,4 +1,4 @@
-module ExampleReachAvoid
+module ExampleUnreachableRegion
 
 using LinearAlgebra
 using JuMP
@@ -14,8 +14,7 @@ include("../utils/loadConfig.jl")
 
 const GUROBI_ENV = Gurobi.Env()
 EXECPATH = "/Users/kandai/Documents/projects/research/clf/build/main"
-# CONFIGPATH = joinpath(@__DIR__, "config.yaml")
-CONFIGPATH = joinpath(@__DIR__, "configWithObstacles.yaml")
+CONFIGPATH = joinpath(@__DIR__, "config.yaml")
 
 
 function main(execPath, configPath)
@@ -46,8 +45,22 @@ function main(execPath, configPath)
     "Synthesize Control Lyapunov functions for the given env"
     # t = @elapsed clfjl.synthesizeCLF(params, env, solver)
     # println("Total Time: ", t)
-    clfjl.synthesizeCLF(params, env, solver)
+    regions::Vector{clfjl.LyapunovFunctions} = clfjl.getUnreachableRegions(params, env, solver)
+
+    for lfs in regions
+        A = map(lf->round.(lf.a, digits=2), lfs) #vec{vec}
+        A = reduce(hcat, A)' # matrix
+        b = map(lf->round(lf.b, digits=2), lfs)
+        convexObstacleDict = Dict("type" => "Convex", "A" => A, "b" => b)
+        push!(config["obstacles"], convexObstacleDict)
+    end
+    clfjl.callOracle(params.execPath, config)
+    clfjl.plot_env(env)
+    clfjl.plotUnreachableRegion(regions, params, env)
+    filepath = joinpath(params.imgFileDir, "UnreachableRegion.png")
+    savefig(filepath)
 end
+
 
 # ------------------------------ Main ------------------------------ #
 @suppress_err begin # Plotting gives warnings, so I added the supress command.

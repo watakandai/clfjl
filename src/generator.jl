@@ -3,66 +3,45 @@ function generateCandidateCLF(counterExamples::Vector{CounterExample},
                               env::Env,
                               solver)::Tuple{LyapunovFunctions, Real}
 
-    N = 2 # hybridSystem.numDim
+    N = 2
+    # N = hybridSystem.numDim
 
     model = solver()
     λb, lfsBounds = addBoundaryLFs(model, env, N)
-    # λo, lfsObstacles = addObstacleLFs(model, env, N)
+    λo, lfsObstacles = addObstacleLFs(model, env, N)
 
-    lfs = [JuMPLyapunovFunction(@variable(model, [1:N], lower_bound=-1, upper_bound=1),
-                                @variable(model)) for _ in counterExamples]
+    lfExamples = [JuMPLyapunovFunction(@variable(model, [1:N], lower_bound=-1, upper_bound=1),
+                                       @variable(model)) for _ in counterExamples]
     gap = @variable(model, lower_bound=0,
                            upper_bound=params.maxLyapunovGapForGenerator)
-
-    termLB = env.termSet.lb[1:N]
-    termUB = env.termSet.ub[1:N]
-
-    for (i, counterExample) in enumerate(counterExamples)
-
-        lfx = lfs[i]
-        x = counterExample.x[1:N]
-        y = counterExample.y[1:N]
-        # α = counterExample.α
-
-        # For the Unsafe Region V(x)>0
-        # if counterExample.isUnsafe
-        #     for lf in lfs
-        #         @constraint(model, takeImage(lf, x) ≥ 0)
-        #     end
-        #     continue
-        # end
-
-        # if x∈T, then skip (Which would never happen, hopefully ...)
-        if all(termLB .< x) && all(x .< termUB)
-            # throw(DomainError(x, "A counter example is observed in the terminal state!"))
-            continue
-        end
-
-        valx = takeImage(lfx, x)
-        @constraint(model, valx ≤ 0)
-
-        for lf in lfs
-            valy = takeImage(lf, y)
-            @constraint(model, valy ≤ 0)
-            # -20 + 2 <= -18
-            # -20 + 2 <= -10
-            @constraint(model, valy + gap ≤ valx)
-            # @constraint(model, valy + gap*α ≤ valx)
-        end
-
-        # V(y)+gap≤V(x) must also hold for the Lyapunov functions on the boundary
-        for i in 1:N^2
-            @constraint(model, takeImage(lfsBounds[i], x) ≤ 0)
-            @constraint(model, takeImage(lfsBounds[i], y) + gap ≤ valx)
-        end
-
-    end
-
     bounds = map(p -> collect(p), zip(env.initSet.lb, env.initSet.ub))
+
+    lfs = vcat(lfExamples, lfsBounds, lfsObstacles)
+
+    # Initial Set must be V(x)<=0. So we ensure all starting points are V(x)<=0
     for corner in Iterators.product(bounds...)
         x = collect(corner)
         for lf in lfs
             @constraint(model, takeImage(lf, x) <= 0)
+        end
+    end
+
+    # Now, we want ot ensure that Lyapunov Functions decreases at each step.
+    for (lfx, counterExample) in zip(lfExamples, counterExamples)
+
+        x = counterExample.x[1:N]
+        y = counterExample.y[1:N]
+
+        valx = takeImage(lfx, x)
+
+        # Recall V(x) := max_j a^T_j x + b_j
+        # To ensure V(y) < V(x), there ∃lfx for x V(y, lf) < V(x, lfx) for any lf ∈ lfs
+        for lf in lfs
+            valy = takeImage(lf, y)
+            # -20 + 2 <= -18
+            # -20 + 2 <= -10
+            @constraint(model, valy + gap ≤ valx)
+            # @constraint(model, valy + gap*α ≤ valx)
         end
     end
 
@@ -72,10 +51,9 @@ function generateCandidateCLF(counterExamples::Vector{CounterExample},
     @assert termination_status(model) == OPTIMAL
     @assert primal_status(model) == FEASIBLE_POINT
 
-    lfs = map(lf -> clfFromJuMP(lf), vcat(lfs, lfsBounds))
-    # lfs = map(lf -> clfFromJuMP(lf), vcat(lfs, lfsBounds, lfsObstacles))
-    # λo = map(λ -> value.(λ), λo)
-    λo = 0
+    lfs = map(lf -> clfFromJuMP(lf), lfs)
+    λo = map(λ -> value.(λ), λo)
+    # λo = 0 # just for now
 
     testCLF(params, counterExamples, value.(λb), λo, lfs, value(gap))
 
@@ -91,9 +69,9 @@ function addBoundaryLFs(model, env, N)
     So we can express it as a=λ[1, 0] & b=λ⋅ub & a*x+b≥0
     """
 
-    λb = [@variable(model, lower_bound=0) for _ in 1:N^2]
+    λb = [@variable(model, lower_bound=0) for _ in 1:2*N]
     lfsBounds = [JuMPLyapunovFunction(@variable(model, [1:N], lower_bound=-1, upper_bound=1),
-                                      @variable(model)) for _ in 1:N^2]
+                                      @variable(model)) for _ in 1:2*N]
 
     # For each dimension x, y and ...
     for idim in 1:N
@@ -160,7 +138,7 @@ function addObstacleLFs(model, env, N)
     we use λ in replacement for y
     """
 
-    λo = [@variable(model, [1:N^2], lower_bound=0) for _ in env.obstacles]
+    λo = [@variable(model, [1:2*N], lower_bound=0) for _ in env.obstacles]
     lfsObstacles = [JuMPLyapunovFunction(@variable(model, [1:N]),
                                          @variable(model)) for _ in env.obstacles]
 
@@ -170,7 +148,7 @@ function addObstacleLFs(model, env, N)
         a = -A' * λo[i]
         b = dot(β', λo[i])
         @constraint(model, lfsObstacles[i].a .== a)
-        @constraint(model, lfsObstacles[i].b .== b)
+        @constraint(model, lfsObstacles[i].b == b)
     end
     return λo, lfsObstacles
 end

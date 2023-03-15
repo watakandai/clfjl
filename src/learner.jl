@@ -7,8 +7,16 @@ end
 "Synthesize Polyhedral Control Lyapunov functions through Sampling Counter Examples"
 function synthesizeCLF(params::Parameters,
                        env::Env,
-                       solver,
-                       callback_fcn::Function=(args...) -> nothing)::Tuple{StatusCode, Vector}
+                       solver)::Tuple{StatusCode, Vector}
+    # First, identify unreachable regions
+    regions = clfjl.getUnreachableRegions(params, env, solver)
+    for lfs in regions
+        A = map(lf->round.(lf.a, digits=2), lfs) #vec{vec}
+        A = reduce(hcat, A)' # matrix
+        b = map(lf->round(lf.b, digits=2), lfs)
+        convexObstacleDict = Dict("type" => "Convex", "A" => A, "b" => b)
+        push!(params.config["obstacles"], convexObstacleDict)
+    end
 
     counterExamples::Vector{CounterExample} = []
     totalSamplingTime = 0.0
@@ -35,7 +43,7 @@ function synthesizeCLF(params::Parameters,
                                                       env,
                                                       solver)
 
-        t = @elapsed callback_fcn(iter, counterExamples, env, params, lfs)
+        t = @elapsed plotCLF(iter, counterExamples, regions, env, params, lfs)
         totalPlotTime += t
 
         params.print && println("|-- Generator Lyapunov Gap: ", genLyapunovGap)
@@ -52,7 +60,7 @@ function synthesizeCLF(params::Parameters,
                                                     solver)
 
         params.print && println("|-- CE: ", x, ", ", verLyapunovGap)
-        if verLyapunovGap < params.thresholdLyapunovGapForGenerator
+        if verLyapunovGap < params.thresholdLyapunovGapForVerifier
             println("Valid controller: terminated")
             return CONTROLLER_FOUND, lfs
         end

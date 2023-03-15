@@ -101,7 +101,7 @@ function verifyCandidateCLF(
 
     N = 2
 
-    safe = isInitSetNegative(lfs, env, solver)
+    safe = isInitSetNegative(lfs, params, env, solver)
 
     maxGap = -1.0
     bestCounterExamplePoint = [.0, .0, .0]
@@ -119,7 +119,9 @@ function verifyCandidateCLF(
             dim = Vector(1:N)
             opBoundInd = Vector(1:N)
             isLB = [true, false]
-            bounds = [env.termSet.lb[1:N], env.termSet.ub[1:N]]
+            ϵ = params.padding ? 0.0 : 0.9*params.thresholdLyapunovGapForVerifier
+            # bounds = [env.termSet.lb[1:N], env.termSet.ub[1:N]]
+            bounds = [env.termSet.lb[1:N].-ϵ, env.termSet.ub[1:N].+ϵ]
             for (idim, iopb) in Iterators.product(dim, opBoundInd)
                 (maxGap,
                  bestCounterExamplePoint,
@@ -325,6 +327,7 @@ end
 
 
 function isInitSetNegative(lfs::LyapunovFunctions,
+                           params::Parameters,
                            env::Env,
                            solver,
                            N = 2)::Bool
@@ -363,7 +366,7 @@ function isInitSetNegative(lfs::LyapunovFunctions,
         end
     end
 
-    if currMaxV > 0
+    if currMaxV > params.thresholdLyapunovGapForVerifier
         throw(DomainError(currMaxV, "∃x ∈ I s.t. Vx)>0. x=$currMaxX"))
         return false
     end
