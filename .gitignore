@@ -27,3 +27,6 @@ examples/**/output/*
 .vscode/*
 .bsp/*
 path.txt
+
+**/*.png
+**/.DS_Store

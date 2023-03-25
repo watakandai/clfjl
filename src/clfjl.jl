@@ -5,12 +5,8 @@ using JuMP
 import Base.@kwdef
 
 @kwdef struct Parameters
-    config::Dict{Any, Any}
-    execPath::String
-    pathFilePath::String
+    optDim::Integer
     imgFileDir::String
-    startPoint::Vector{Real}
-    maxXNorm::Real
     maxIteration::Real
     maxLyapunovGapForGenerator::Real
     maxLyapunovGapForVerifier::Real
@@ -18,50 +14,58 @@ import Base.@kwdef
     thresholdLyapunovGapForVerifier::Real
     print::Bool
     padding::Bool
+    omplConfig::Dict{Any, Any}=Dict()
 end
+
 
 struct HyperRectangle
-    lb::Vector{Real}
-    ub::Vector{Real}
+    lb::Vector{<:Real}
+    ub::Vector{<:Real}
 end
 
+
 struct Dynamics
-    A::Matrix{Float64}
-    b::Vector{Float64}
+    A::Matrix{<:Real}
+    b::Vector{<:Real}
     numDim::Integer
 end
 
-struct HybridSystem
-    dynamics::Dict{Integer, Dynamics}
+
+@kwdef struct HybridSystem
+    dynamics::Dict{Any, Dynamics}
     numMode::Integer
     numDim::Integer
 end
 
-struct Env
+
+@kwdef struct Env
     # For generality, we'll keep I & T set as vectors,
     # but generally they should be a single hyperrectagle.
-    # initSet::Vector{HyperRectangle}
-    # termSet::Vector{HyperRectangle}
+    numStateDim::Integer
+    numSpaceDim::Integer
     initSet::HyperRectangle
     termSet::HyperRectangle
     workspace::HyperRectangle
     obstacles::Vector{HyperRectangle}
-    hybridSystem::HybridSystem
+    # hybridSystem::HybridSystem
 end
 
+
 struct CounterExample
-    x::Vector{Real}
+    x::Vector{<:Real}
     α::Real
     dynamics::Dynamics
-    y::Vector{Real}
+    y::Vector{<:Real}
     isTerminal::Bool
     isUnsafe::Bool
 end
 
+
 struct LyapunovFunction
-    a::Vector{Real}
+    a::Vector{<:Real}
     b::Real
 end
+
 
 struct JuMPLyapunovFunction
     a::Vector{VariableRef}
@@ -78,5 +82,7 @@ include("learner.jl")
 include("controlLyapunovFunctions.jl")
 include("plotFunc.jl")
 include("prechecker.jl")
+include("decomposition.jl")
+include("simulator.jl")
 
 end # module

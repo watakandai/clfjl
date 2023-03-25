@@ -1,0 +1,18 @@
+runTime: 10
+numStateDim: 3
+numSpaceDim: 2
+goalThreshold: 0.1
+start: [0.0, 1.0, 0.0]
+goal: [1.0, 0.0, 0.0]
+lowerBound: [-0.5, -0.5, -1.57]
+upperBound: [ 2.0,  2.0,  1.57]
+controlLowerBound: [-1.0, -1.57]
+controlUpperBound: [ 1.0,  1.57]
+goalBias: 0.1
+selectionRadius: 0.6
+pruningRadius: 0.08
+propagationStepSize: 0.1
+controlDurationBound: [1, 10]
+planner: "SST"
+objective: "PathLengthObjWithCostToGo"
+file: "path.txt"

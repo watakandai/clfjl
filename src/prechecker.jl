@@ -2,33 +2,42 @@
 function getSupportingHyperPlane(obstacle::HyperRectangle,
                                  params::Parameters,
                                  env::Env,
-                                 solver)::LyapunovFunctions
-    N = 2
+                                 solver,
+                                 ϵ,
+                                 separateInit::Bool=true)::LyapunovFunctions
+
+    Nd = params.optDim
+    Ns = env.numSpaceDim
     model = solver()
 
-    xT = @variable(model, [1:N])
-    xI = @variable(model, [1:N])
-    xO = @variable(model, [1:N])
-    lf = JuMPLyapunovFunction(@variable(model, [1:N]),
+    xT = @variable(model, [1:Nd])
+    xI = @variable(model, [1:Nd])
+    xO = @variable(model, [1:Nd])
+    lf = JuMPLyapunovFunction(@variable(model, [1:Nd]),
                               @variable(model))
 
-    termBounds = map(p -> collect(p), zip(env.termSet.lb[1:N], env.termSet.ub[1:N]))
-    initBounds = map(p -> collect(p), zip(env.initSet.lb[1:N], env.initSet.ub[1:N]))
-    obsBounds = map(p -> collect(p), zip(obstacle.lb[1:N], obstacle.ub[1:N]))
+    termBounds = map(p -> collect(p), zip(env.termSet.lb, env.termSet.ub))
+    initBounds = map(p -> collect(p), zip(env.initSet.lb, env.initSet.ub))
+    obsBounds = map(p -> collect(p), zip(obstacle.lb, obstacle.ub))
 
     termCorners = vec(collect.(Iterators.product(termBounds...)))
     initCorners = vec(collect.(Iterators.product(initBounds...)))
     obsCorners = vec(collect.(Iterators.product(obsBounds...)))
 
     # Initial Set must be V(x)<=0. So we ensure all starting points are V(x)<=0
+    termVal::Integer = Int(!separateInit)
+    initVal::Integer = Int(separateInit)
+
     for xT in termCorners
-        @constraint(model, takeImage(lf, xT) ≥ 0)
+        # @constraint(model, takeImage(lf, xT) ≥ termVal)
+        @constraint(model, takeImage(lf, xT) ≥ 1)
     end
     for xI in initCorners
+        # @constraint(model, takeImage(lf, xI) ≥ initVal)
         @constraint(model, takeImage(lf, xI) ≥ 1)
     end
     for xO in obsCorners
-        @constraint(model, -1 * takeImage(lf, xO) ≥ 0)
+        @constraint(model, -1 * takeImage(lf, xO) ≥ 1)
    end
 
     # Solve the feasibility problem
@@ -76,7 +85,7 @@ function getHyperPlanesExcludingObstacles(obstacle::HyperRectangle,
     A = [[-1, 0], [1, 0], [0, -1], [0, 1]]
     β = [obstacle.lb[1], -obstacle.ub[1], obstacle.lb[2], -obstacle.ub[2]]
 
-    termBounds = map(p -> collect(p), zip(env.termSet.lb[1:N], env.termSet.ub[1:N]))
+    termBounds = map(p -> collect(p), zip(env.termSet.lb, env.termSet.ub))
     termCorners = vec(collect.(Iterators.product(termBounds...)))
 
     feasibleLfs = []
@@ -109,20 +118,34 @@ end
 function getUnreachableRegion(obstacle::HyperRectangle,
                               params::Parameters,
                               env::Env,
-                              solver)::LyapunovFunctions
-    return vcat(getSupportingHyperPlane(obstacle, params, env, solver),
-                getHyperPlanesExcludingObstacles(obstacle, params, env, solver))
+                              solver,
+                              ϵ)::LyapunovFunctions
+    return vcat(getSupportingHyperPlane(obstacle, params, env, solver, false))
 end
 
 "Get Hyperplans that separate obstacles from initial and terminal sets"
 function getUnreachableRegions(params::Parameters,
                                env::Env,
-                               solver)::Vector{LyapunovFunctions}
+                               solver,
+                               ϵ)::Vector{LyapunovFunctions}
     """
     Hyperplanes Ax + b separates obstacles from initial and terminal sets.
         ∀x ∈ O, Ax ≥ b
         ∀x ∈ I ∩ T, Ax < b
     """
-    # return map(o -> getUnreachableRegion(o, params, env, solver), env.obstacles)
-    return map(o -> getSupportingHyperPlane(o, params, env, solver), env.obstacles)
+    return map(o -> getUnreachableRegion(o, params, env, solver, ϵ), env.obstacles)
 end
+
+# First, identify unreachable regions
+# regions = clfjl.getUnreachableRegions(params,
+#                                       env,
+#                                       solver,
+#                                       0.0)
+# for lfs in regions
+#     A = map(lf->round.(lf.a[1:env.numSpaceDim], digits=2), lfs) #vec{vec}
+#     A = reduce(hcat, A)' # matrix
+#     b = map(lf->round(lf.b, digits=2), lfs)
+#     convexObstacleDict = Dict("type" => "Convex", "A" => A, "b" => b)
+#     push!(params.config["obstacles"], convexObstacleDict)
+# end
+

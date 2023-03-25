@@ -2,6 +2,7 @@ import YAML
 using DelimitedFiles
 using Plots
 using Deldir
+using LinearAlgebra
 
 rotgrid(grd, θ) = [cos(θ) -sin(θ); sin(θ) cos(θ)] * grd
 
@@ -31,7 +32,7 @@ function drawGeometry(geometry; kwargs...)
 end
 
 
-function plot_env(env)
+function plotEnv(env)
     # Plot the Boundary
     xmin = Float64(env.workspace.lb[1])
     xmax = Float64(env.workspace.ub[1])
@@ -88,10 +89,10 @@ function toObstacleString(o)
 end
 
 
-function plotCLF(iter, counterExamples, regions, env, params, lfs, filename="")
+function plot2DCLF(iter, counterExamples, env, params, lfs; regions=nothing, filename="")
 
-    plot_env(env)
-    plotUnreachableRegion(regions, params, env)
+    plotEnv(env)
+    plotUnreachableRegion(env, regions=regions)
     x = range(1.1*env.workspace.lb[1], 1.1*env.workspace.ub[1], length=100)
     y = range(1.1*env.workspace.lb[2], 1.1*env.workspace.ub[2], length=100)
     Vtemp(x_, y_) = clfjl.V([x_, y_], lfs)
@@ -110,22 +111,134 @@ function plotCLF(iter, counterExamples, regions, env, params, lfs, filename="")
     ymin = Float64(env.workspace.lb[2])
     ymax = Float64(env.workspace.ub[2])
 
-    del, vor, _ = deldir(X, Y, [xmin, xmax, ymin, ymax], 1e-9)
-    # Dx, Dy = edges(del)
-    Vx, Vy = edges(vor)
+    # del, vor, _ = deldir(X, Y, [xmin, xmax, ymin, ymax], 1e-9)
+    # # Dx, Dy = edges(del)
+    # Vx, Vy = edges(vor)
 
-    plot!(Vx, Vy, style=:dash, color=:black, label = "Voronoi")
+    # plot!(Vx, Vy, style=:dash, color=:black, label = "Voronoi")
     if isnothing(params.imgFileDir)
         print(pwd())
     else
-        # mkdir(params.imgFileDir)
+        if !isdir(params.imgFileDir)
+            mkdir(params.imgFileDir)
+        end
         filepath = joinpath(params.imgFileDir, "$filename$iter.png")
         savefig(filepath)
     end
 end
 
 
-function plotUnreachableRegion(regions, params, env)
+function plot3DCLF(iter, counterExamples, env, params, lfs; regions=nothing, filename="")
+
+    Nd = params.optDim
+    Ns = env.numSpaceDim
+
+    x = range(1.1*env.workspace.lb[1], 1.1*env.workspace.ub[1], length=100)
+    y = range(1.1*env.workspace.lb[2], 1.1*env.workspace.ub[2], length=100)
+    z = range(1.1*env.workspace.lb[3], 1.1*env.workspace.ub[3], length=5)
+    sumVals = sum(maximum.(map(v->abs.(collect(v)), zip(env.workspace.lb[1:Nd], env.workspace.ub[1:Nd]))))
+    clims = (-sumVals, sumVals)
+
+    for z_ in z
+        plotEnv(env)
+        plotUnreachableRegion(env, regions=regions)
+
+        Vtemp(x_, y_) = clfjl.V([x_, y_, z_], lfs)
+        z = @. Vtemp(x', y)
+
+        contour!(x, y, Vtemp, levels=[0], color=:red, style=:dot, linewidth=2, legend=:none, clims=clims)
+        contour!(x, y, z, levels=100, color=:turbo, colorbar=true, clims=clims)
+
+        listOfPoints = map(c -> ifelse(c.x==c.y, [c.x], [c.x, c.y]) , counterExamples)
+        XY = reduce(vcat, listOfPoints; init=Vector{Vector{Float64}}())
+        X = map(x -> x[1], XY)
+        Y = map(x -> x[2], XY)
+        scatter!(X, Y, markersize = 3)
+
+        xmin = Float64(env.workspace.lb[1])
+        xmax = Float64(env.workspace.ub[1])
+        ymin = Float64(env.workspace.lb[2])
+        ymax = Float64(env.workspace.ub[2])
+
+        listOfPoints = map(c -> [c.x], counterExamples)
+        XY = reduce(vcat, listOfPoints; init=Vector{Vector{Float64}}())
+        X = map(x -> x[1], XY)
+        Y = map(x -> x[2], XY)
+        del, vor, _ = deldir(X, Y, [xmin, xmax, ymin, ymax], 1e-10)
+        # Dx, Dy = edges(del)
+        Vx, Vy = edges(vor)
+
+        plot!(Vx, Vy, style=:dash, color=:black, label = "Voronoi")
+
+        if isnothing(params.imgFileDir)
+            print(pwd())
+        else
+            if !isdir(params.imgFileDir)
+                mkdir(params.imgFileDir)
+            end
+            filepath = joinpath(params.imgFileDir, "$(filename)$(iter)@z=$z_.png")
+            savefig(filepath)
+        end
+    end
+end
+
+
+function plot4DCLF(iter, counterExamples, params, lfs; regions=nothing, filename="")
+
+    Nd = params.optDim
+    Ns = env.numSpaceDim
+
+    x = range(1.1*env.workspace.lb[1], 1.1*env.workspace.ub[1], length=100)
+    y = range(1.1*env.workspace.lb[2], 1.1*env.workspace.ub[2], length=100)
+    # θs = range(0, 2*π, length=12)
+    θs = [0]
+
+    for θ in θs
+        plotEnv(env)
+        plotUnreachableRegion(env, regions=regions)
+
+        Vtemp(x_, y_) = clfjl.V([x_, y_, cos(θ), sin(θ)], lfs)
+        z = @. Vtemp(x', y)
+
+        contour!(x, y, Vtemp, levels=[0], color=:red, style=:dot, linewidth=2, legend=:none)
+        contour!(x, y, z, levels=100, color=:turbo, colorbar=true)
+
+        listOfPoints = map(c -> ifelse(c.isTerminal, [c.x], [c.x]), counterExamples)
+        XY = reduce(vcat, listOfPoints; init=Vector{Vector{Float64}}())
+        X = map(x -> x[1], XY)
+        Y = map(x -> x[2], XY)
+        scatter!(X, Y, markersize = 3)
+
+        xmin = Float64(env.workspace.lb[1])
+        xmax = Float64(env.workspace.ub[1])
+        ymin = Float64(env.workspace.lb[2])
+        ymax = Float64(env.workspace.ub[2])
+
+        # del, vor, _ = deldir(X, Y, [xmin, xmax, ymin, ymax], 1e-4)
+        # # Dx, Dy = edges(del)
+        # Vx, Vy = edges(vor)
+
+        # plot!(Vx, Vy, style=:dash, color=:black, label = "Voronoi")
+
+        if isnothing(params.imgFileDir)
+            print(pwd())
+        else
+            if !isdir(params.imgFileDir)
+                mkdir(params.imgFileDir)
+            end
+            deg = 180 / pi * θ
+            filepath = joinpath(params.imgFileDir, "$(filename)$(iter)@θ=$deg.png")
+            savefig(filepath)
+        end
+    end
+end
+
+
+function plotUnreachableRegion(env; regions=nothing)
+    if isnothing(regions)
+        return
+    end
+
     for lfs in regions
         for lf in lfs
             xmin = env.workspace.lb[1]
@@ -140,12 +253,85 @@ function plotUnreachableRegion(regions, params, env)
                 plot!([x, x], [ymin, ymax], color=:black, lw=2)
             else
                 tilt = - lf.a[1] / lf.a[2]
-                bias = lf.b / lf.a[2]
-                f(x) = (- lf.b - lf.a[1] * x) / lf.a[2]
-                x = range(env.workspace.lb[1], env.workspace.ub[1], length=100)
-                y = f.(x)
+                if abs(tilt) > 1
+                    fy(y) = (- lf.b - lf.a[2] * y) / lf.a[1]
+                    y = range(env.workspace.lb[2], env.workspace.ub[2], length=100)
+                    x = fy.(y)
+                else
+                    fx(x) = (- lf.b - lf.a[1] * x) / lf.a[2]
+                    x = range(env.workspace.lb[1], env.workspace.ub[1], length=100)
+                    y = fx.(x)
+                end
                 plot!(x, y, color=:black, lw=2)
             end
         end
     end
+end
+
+
+function plotCellDecomposition(counterExamples, rectangles, params, env)
+
+    for rectangle in rectangles
+        xmin = Float64(rectangle.lb[1])
+        xmax = Float64(rectangle.ub[1])
+        ymin = Float64(rectangle.lb[2])
+        ymax = Float64(rectangle.ub[2])
+        X = [xmin, xmin, xmax, xmax, xmin]
+        Y = [ymin, ymax, ymax, ymin, ymin]
+        plot!(X, Y, c=:black, lw=2, aspect_ratio=:equal, legend=false)
+    end
+
+    "Plot Sample Points"
+    listOfPoints = map(c -> ifelse(c.isTerminal, [c.x], [c.x]), counterExamples)
+    XY = reduce(vcat, listOfPoints; init=Vector{Vector{Float64}}())
+    X = map(x -> x[1], XY)
+    Y = map(x -> x[2], XY)
+    scatter!(X, Y, markersize = 3)
+
+    xmin = Float64(env.workspace.lb[1])
+    xmax = Float64(env.workspace.ub[1])
+    ymin = Float64(env.workspace.lb[2])
+    ymax = Float64(env.workspace.ub[2])
+
+    "Plot Voronoi Regions"
+    del, vor, _ = deldir(X, Y, [xmin, xmax, ymin, ymax], 1e-7)
+    Vx, Vy = edges(vor)
+    plot!(Vx, Vy, style=:dash, color=:black, label = "Voronoi")
+end
+
+
+function plotProjectionToConvexSet(x, lfs::LyapunovFunctions)
+    """
+    Convex Set is represented as Ax <= b
+    We want to plot a projection of point x0 onto the convex set.
+
+    We compute a projection and the distance to each hyperplane ai^Tx + bi == 0
+    """
+    A = map(lf -> collect(lf.a), lfs)
+    b = map(lf -> -lf.b, lfs)
+    A = reduce(hcat, A)'
+
+    minDist = Inf
+    minXp = A \ b
+
+    println("Project a point $x. current minXp=$minXp")
+
+    for lf in lfs
+        xp = x - (dot(lf.a, x) + lf.b) / norm(lf.a, 2)^2 * lf.a
+        println("Line: $lf, Projection: $xp, ")
+
+        if V(xp, lfs) <= 0
+            distance = abs(dot(lf.a, x) + lf.b) / norm(lf.a, 2)
+            println("Distance: $distance")
+            if distance < minDist
+                minDist = min(minDist, distance)
+                minXp = xp
+            end
+        end
+    end
+
+    data = map(p -> collect(p), zip(x, minXp))
+    println("Data", data)
+    scatter!([x[1]], [x[2]], markersize=10, shape=:star)
+    plot!(data..., color=:blue, style=:dot, markersize=3)
 end

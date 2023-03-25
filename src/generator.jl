@@ -1,10 +1,10 @@
 function generateCandidateCLF(counterExamples::Vector{CounterExample},
-                              params::Parameters,
                               env::Env,
-                              solver)::Tuple{LyapunovFunctions, Real}
-
-    N = 2
-    # N = hybridSystem.numDim
+                              solver,
+                              N::Integer,
+                              maxLyapunovGapForGenerator::Real,
+                              thresholdLyapunovGapForGenerator::Real
+                              )::Tuple{LyapunovFunctions, Real}
 
     model = solver()
     λb, lfsBounds = addBoundaryLFs(model, env, N)
@@ -13,13 +13,13 @@ function generateCandidateCLF(counterExamples::Vector{CounterExample},
     lfExamples = [JuMPLyapunovFunction(@variable(model, [1:N], lower_bound=-1, upper_bound=1),
                                        @variable(model)) for _ in counterExamples]
     gap = @variable(model, lower_bound=0,
-                           upper_bound=params.maxLyapunovGapForGenerator)
-    bounds = map(p -> collect(p), zip(env.initSet.lb, env.initSet.ub))
+                           upper_bound=maxLyapunovGapForGenerator)
+    initBounds = map(p -> collect(p), zip(env.initSet.lb, env.initSet.ub))
 
     lfs = vcat(lfExamples, lfsBounds, lfsObstacles)
 
     # Initial Set must be V(x)<=0. So we ensure all starting points are V(x)<=0
-    for corner in Iterators.product(bounds...)
+    for corner in Iterators.product(initBounds...)
         x = collect(corner)
         for lf in lfs
             @constraint(model, takeImage(lf, x) <= 0)
@@ -29,10 +29,15 @@ function generateCandidateCLF(counterExamples::Vector{CounterExample},
     # Now, we want ot ensure that Lyapunov Functions decreases at each step.
     for (lfx, counterExample) in zip(lfExamples, counterExamples)
 
-        x = counterExample.x[1:N]
-        y = counterExample.y[1:N]
+        x = counterExample.x
+        y = counterExample.y
+        α = counterExample.α
 
         valx = takeImage(lfx, x)
+
+        if counterExample.isUnsafe
+            @constraint(model, valx ≥ gap)
+        end
 
         # Recall V(x) := max_j a^T_j x + b_j
         # To ensure V(y) < V(x), there ∃lfx for x V(y, lf) < V(x, lfx) for any lf ∈ lfs
@@ -40,8 +45,10 @@ function generateCandidateCLF(counterExamples::Vector{CounterExample},
             valy = takeImage(lf, y)
             # -20 + 2 <= -18
             # -20 + 2 <= -10
-            @constraint(model, valy + gap ≤ valx)
-            # @constraint(model, valy + gap*α ≤ valx)
+            if !counterExample.isUnsafe
+                @constraint(model, valy + gap ≤ valx)
+                # @constraint(model, valy + gap*α ≤ valx)
+            end
         end
     end
 
@@ -53,9 +60,10 @@ function generateCandidateCLF(counterExamples::Vector{CounterExample},
 
     lfs = map(lf -> clfFromJuMP(lf), lfs)
     λo = map(λ -> value.(λ), λo)
-    # λo = 0 # just for now
 
-    testCLF(params, counterExamples, value.(λb), λo, lfs, value(gap))
+    if value(gap) < thresholdLyapunovGapForGenerator
+        testCLF(counterExamples, lfs, value(gap))
+    end
 
     return lfs, objective_value(model)
 end
@@ -68,9 +76,9 @@ function addBoundaryLFs(model, env, N)
     This can be rewritten in the form a*x+b. e.g.) λ(x-ub) => λ[1, 0] - λ⋅ub
     So we can express it as a=λ[1, 0] & b=λ⋅ub & a*x+b≥0
     """
-
     λb = [@variable(model, lower_bound=0) for _ in 1:2*N]
-    lfsBounds = [JuMPLyapunovFunction(@variable(model, [1:N], lower_bound=-1, upper_bound=1),
+    # lfsBounds = [JuMPLyapunovFunction(@variable(model, [1:N], lower_bound=-1, upper_bound=1),
+    lfsBounds = [JuMPLyapunovFunction(@variable(model, [1:N]),
                                       @variable(model)) for _ in 1:2*N]
 
     # For each dimension x, y and ...
@@ -137,19 +145,54 @@ function addObstacleLFs(model, env, N)
            y ≥ 0
     we use λ in replacement for y
     """
-
     λo = [@variable(model, [1:2*N], lower_bound=0) for _ in env.obstacles]
+
     lfsObstacles = [JuMPLyapunovFunction(@variable(model, [1:N]),
+    # lfsObstacles = [JuMPLyapunovFunction(@variable(model, [1:N], lower_bound=-1, upper_bound=1),
                                          @variable(model)) for _ in env.obstacles]
 
-    for (i, o) in enumerate(env.obstacles)
-        A = [-1 0; 1 0; 0 -1; 0 1]
-        β = [-o.lb[1], o.ub[1], -o.lb[2], o.ub[2]]
-        a = -A' * λo[i]
-        b = dot(β', λo[i])
-        @constraint(model, lfsObstacles[i].a .== a)
-        @constraint(model, lfsObstacles[i].b == b)
+    for (iObs, o) in enumerate(env.obstacles)
+        A = zeros(2*N, N)
+        β = zeros(2*N)
+        for idim in 1:N
+            # lb
+            i = 2*(idim-1) + 1
+            A[i, idim] = -1
+            β[i] = -o.lb[idim]
+
+            # ub
+            i = 2*idim
+            A[i, idim] = 1
+            β[i] = o.ub[idim]
+        end
+
+        a = -A' * λo[iObs]
+        b = dot(β', λo[iObs])
+        @constraint(model, lfsObstacles[iObs].a .== a)
+        @constraint(model, lfsObstacles[iObs].b == b)
     end
+
+    # λu = [[@variable(model, lower_bound=0) for _ in lfs] for lfs in unreachableRegions]
+    # lfsUnreach = [[JuMPLyapunovFunction(@variable(model, [1:length(lf.a)]),
+    #                                     @variable(model)) for lf in lfs]
+    #                                                       for lfs in unreachableRegions]
+
+    # # Constraint each unreachable region using duality
+    # # Unreachable region is defined as a set of hyperplanes lfs
+    # # each hyperplane a^Tx + b <= 0
+    # # Thus, in reverse, the safe set is defined as a^Tx + b >= 0
+    # # Therefore, to translate into <= expression, we constrain the model to -(a^Tx + b) <= 0
+    # for (lfs, jlfs, λs) in zip(unreachableRegions, lfsUnreach, λu)
+    #     for (lf, jlf, λ) in zip(lfs, jlfs, λs)
+    #         @constraint(model, jlf.a .== -λ * lf.a)
+    #         @constraint(model, jlf.b == -λ * lf.b)
+    #     end
+    # end
+
+    # # Flatten lfsUnreach
+    # lfsUnreach = collect(Iterators.flatten(lfsUnreach))
+
+    # return vcat(λo, λu), vcat(lfsObstacles, lfsUnreach)
     return λo, lfsObstacles
 end
 
@@ -207,7 +250,8 @@ function addInitialSetLF(model, env, N)
         λ1(1) + λ2(x + ub[1]) + λ3(-y - lb[2]) + λ4(y + ub[2]) <= 0???
     """
     λi = @variable(model, [1:N^2], lower_bound=0)
-    lfsInit = JuMPLyapunovFunction(@variable(model, [1:N]), @variable(model))
+    lfsInit = JuMPLyapunovFunction(@variable(model, [1:N], lower_bound=-1, upper_bound=1),
+                                   @variable(model))
 
     # A = [-1 0; 1 0; 0 -1; 0 1]
     # β = [-env.initSet.lb[1], env.initSet.ub[1], -env.initSet.lb[2], env.initSet.ub[2]]
@@ -220,44 +264,26 @@ function addInitialSetLF(model, env, N)
 end
 
 
-function testCLF(params, counterExamples, λb, λo, lfs, gap)
-    N = 2
-
-    infeasible = gap < params.thresholdLyapunovGapForGenerator
+function testCLF(counterExamples, lfs, gap)
 
     for c in counterExamples
 
-        x = c.x[1:N]
-        @assert length(x) == 2
+        x = c.x
+        # @assert length(x) == 2
         Vx = V(x, lfs)
         ix = iV(x, lfs)
         ax, bx = lfs[ix].a, lfs[ix].b
-        Vx = round(Vx, digits=3)
+        Vx = round(Vx, digits=4)
 
-        y = c.y[1:N]
+        y = c.y
         Vy = V(y, lfs)
         iy = iV(y, lfs)
         ay, by = lfs[iy].a, lfs[iy].b
-        Vy = round(Vy, digits=3)
+        Vy = round(Vy, digits=4)
 
-        if infeasible
-            println("x=$x, y=$y \t=>\t Vy<Vx => $Vy + $gap < $Vx")
-            println("\t$ay*y + ($by) + $gap < ")
-            println("\t$ax*x + ($bx)")
-        end
+        println("x=$x, y=$y \t=>\t Vy<Vx => $Vy + $gap < $Vx")
+        println("\t$ay*y + ($by) + $gap < ")
+        println("\t$ax*x + ($bx)")
         @assert Vy <= Vx "$Vy <= $Vx, @x=$x and @y=$y"
     end
-
-    @assert all(map(λ -> λ > 0, λb)) λb
-    # @assert all(map(λ -> any(map(e -> e > 0, λ)), λo)) λo
-
-    @assert V([-101, -101], lfs) > 0
-    @assert V([101, -101], lfs) > 0
-    @assert V([101, 101], lfs) > 0
-    @assert V([-101, 101], lfs) > 0
-
-    @assert V([-100, -100], lfs) >= -1E-9
-    @assert V([100, -100], lfs) >= -1E-9
-    @assert V([100, 100], lfs) >= -1E-9
-    @assert V([-100, 100], lfs) >= -1E-9
 end

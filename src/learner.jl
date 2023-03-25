@@ -1,3 +1,4 @@
+using JLD2
 @enum StatusCode begin
     CONTROLLER_FOUND = 0
     CONTROLLER_INFEASIBLE = 1
@@ -5,31 +6,22 @@
 end
 
 "Synthesize Polyhedral Control Lyapunov functions through Sampling Counter Examples"
-function synthesizeCLF(params::Parameters,
+function synthesizeCLF(x0::Vector{<:Real},
+                       params::Parameters,
                        env::Env,
-                       solver)::Tuple{StatusCode, Vector}
-    # First, identify unreachable regions
-    regions = clfjl.getUnreachableRegions(params, env, solver)
-    for lfs in regions
-        A = map(lf->round.(lf.a, digits=2), lfs) #vec{vec}
-        A = reduce(hcat, A)' # matrix
-        b = map(lf->round(lf.b, digits=2), lfs)
-        convexObstacleDict = Dict("type" => "Convex", "A" => A, "b" => b)
-        push!(params.config["obstacles"], convexObstacleDict)
-    end
-
+                       solver,
+                       sampleFunc,
+                       plotFunc=(args...)->nothing)::Tuple{StatusCode, Vector}
     counterExamples::Vector{CounterExample} = []
-    totalSamplingTime = 0.0
-    totalPlotTime = 0.0
-    x = params.startPoint
+    x = x0
+    lfs::LyapunovFunctions = []
 
     iter::Integer = 0
     while true
 
         iter += 1
         params.print && println("Sampling ...")
-        t = @elapsed sampleTrajectory(counterExamples, x, params, env)
-        totalSamplingTime += t
+        sampleFunc(counterExamples, x, env)
 
         params.print && println("Iter: ", iter, " - ncl: ", length(counterExamples))
         if iter > params.maxIteration
@@ -37,14 +29,16 @@ function synthesizeCLF(params::Parameters,
             break
         end
 
-        (lfs::Vector,
+        (lfs,
          genLyapunovGap::Real) = generateCandidateCLF(counterExamples,
-                                                      params,
                                                       env,
-                                                      solver)
+                                                      solver,
+                                                      params.optDim,
+                                                      params.maxLyapunovGapForGenerator,
+                                                      params.thresholdLyapunovGapForGenerator)
 
-        t = @elapsed plotCLF(iter, counterExamples, regions, env, params, lfs)
-        totalPlotTime += t
+        println("Plotting ...")
+        plotFunc(iter, counterExamples, env, params, lfs)
 
         params.print && println("|-- Generator Lyapunov Gap: ", genLyapunovGap)
         if genLyapunovGap < params.thresholdLyapunovGapForGenerator
@@ -52,19 +46,25 @@ function synthesizeCLF(params::Parameters,
             return CONTROLLER_INFEASIBLE, []
         end
 
-        (x::Vector{Real},
+        (x::Vector{<:Real},
          verLyapunovGap::Real) = verifyCandidateCLF(counterExamples,
                                                     lfs,
-                                                    params,
                                                     env,
-                                                    solver)
+                                                    solver,
+                                                    params.optDim,
+                                                    params.thresholdLyapunovGapForVerifier)
 
         params.print && println("|-- CE: ", x, ", ", verLyapunovGap)
         if verLyapunovGap < params.thresholdLyapunovGapForVerifier
             println("Valid controller: terminated")
+            @save "learnedCLFs" lfs counterExamples env
             return CONTROLLER_FOUND, lfs
         end
 
     end
+    iter = Inf
+    plotFunc(iter, counterExamples, env, params, lfs)
+
     return MAX_ITER_REACHED, []
 end
+

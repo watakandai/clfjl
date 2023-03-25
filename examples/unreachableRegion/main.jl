@@ -13,30 +13,30 @@ using Debugger
 include("../utils/loadConfig.jl")
 
 const GUROBI_ENV = Gurobi.Env()
-EXECPATH = "/Users/kandai/Documents/projects/research/clf/build/main"
+EXECPATH = "/Users/kandai/Documents/projects/research/clf/build/clfPlanner2D"
 CONFIGPATH = joinpath(@__DIR__, "config.yaml")
 
 
-function main(execPath, configPath)
+function main(optDim, execPath, configPath)
     config::Dict{Any, Any} = YAML.load(open(configPath))
 
     params = clfjl.Parameters(
+        optDim=optDim,
         config=config,
         execPath=execPath,
         pathFilePath=joinpath(pwd(), "path.txt"),
         imgFileDir=joinpath(@__DIR__, "output"),
         startPoint=config["start"],
-        maxXNorm=15,
         maxIteration=100,
         maxLyapunovGapForGenerator=10,
         maxLyapunovGapForVerifier=10,
-        thresholdLyapunovGapForGenerator=1e-5,
-        thresholdLyapunovGapForVerifier=1e-5,
+        thresholdLyapunovGapForGenerator=1e-3,
+        thresholdLyapunovGapForVerifier=1e-1,
         print=true,
         padding=true
     )
 
-    env::clfjl.Env = getEnvFromConfig(config)
+    env::clfjl.Env = getEnvg(params)
 
     "Setup Gurobi"
     solver() = Model(optimizer_with_attributes(() -> Gurobi.Optimizer(GUROBI_ENV),
@@ -46,6 +46,8 @@ function main(execPath, configPath)
     # t = @elapsed clfjl.synthesizeCLF(params, env, solver)
     # println("Total Time: ", t)
     regions::Vector{clfjl.LyapunovFunctions} = clfjl.getUnreachableRegions(params, env, solver)
+    counterExamples::Vector{clfjl.CounterExample} = []
+    clfjl.sampleTrajectory(counterExamples, params.startPoint, params, env)
 
     for lfs in regions
         A = map(lf->round.(lf.a, digits=2), lfs) #vec{vec}
@@ -55,8 +57,11 @@ function main(execPath, configPath)
         push!(config["obstacles"], convexObstacleDict)
     end
     clfjl.callOracle(params.execPath, config)
-    clfjl.plot_env(env)
+    clfjl.plotEnv(env)
     clfjl.plotUnreachableRegion(regions, params, env)
+    x = counterExamples[1].x
+    clfjl.plotProjectionToConvexSet([-0.5, -0.6], regions[1])
+    clfjl.plotProjectionToConvexSet([-0.75, -0.75], regions[1])
     filepath = joinpath(params.imgFileDir, "UnreachableRegion.png")
     savefig(filepath)
 end
@@ -64,7 +69,8 @@ end
 
 # ------------------------------ Main ------------------------------ #
 @suppress_err begin # Plotting gives warnings, so I added the supress command.
-    main(EXECPATH, CONFIGPATH)
+    optDim = 2
+    main(optDim, EXECPATH, CONFIGPATH)
 end
 # ------------------------------------------------------------------ #
 

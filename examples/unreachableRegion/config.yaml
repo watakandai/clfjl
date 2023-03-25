@@ -1,9 +1,12 @@
 runTime: 2
+numStateDim: 3
+numSpaceDim: 2
+startThreshold: 0.10
 goalThreshold: 0.15
 start: [-0.75, -0.75, 1.57]
 goal: [0.0, 0.0, 0]
-xBound: [-1, 1]
-yBound: [-1, 1]
+lowerBound: [-1, -1]
+upperBound: [1, 1]
 controlDurationBound: [1, 1]
 propagationStepSize: 1
 planner: "SST"

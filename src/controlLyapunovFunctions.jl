@@ -21,7 +21,7 @@ end
 
 function takeImage(lf::Union{LyapunovFunction, JuMPLyapunovFunction},
                    x::AbstractVector)::Union{Real, AffExpr}
-    @assert length(x) == length(lf.a)
+    @assert length(x) == length(lf.a) "$x, $(lf.a)"
     return dot(lf.a, x) + lf.b
 end
 
