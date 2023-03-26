@@ -14,7 +14,7 @@ const GUROBI_ENV = Gurobi.Env()
 # X = [x, y, v], U = [α, θ]
 function main()
     N = 3
-    execPath = "/Users/kandai/Documents/projects/research/clf/build/clfPlanner3D"
+    execPath = "/home/kandai/Documents/projects/research/ControlLyapunovFunctionPlanners//build/clfPlanner3D"
     configPath = joinpath(@__DIR__, "config.yaml")
 
     config::Dict{Any, Any} = YAML.load(open(configPath))
@@ -48,7 +48,7 @@ function main()
         maxIteration=1000,
         maxLyapunovGapForGenerator=10,
         maxLyapunovGapForVerifier=10,
-        thresholdLyapunovGapForGenerator=1e-5,
+        thresholdLyapunovGapForGenerator=1e-12,
         thresholdLyapunovGapForVerifier=0,
         print=true,
         padding=true,

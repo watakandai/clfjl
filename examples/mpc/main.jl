@@ -41,7 +41,7 @@ function main(;x0::Vector{<:Real},
         maxIteration=1000,
         maxLyapunovGapForGenerator=10,
         maxLyapunovGapForVerifier=10,
-        thresholdLyapunovGapForGenerator=1e-5,
+        thresholdLyapunovGapForGenerator=1e-12,
         thresholdLyapunovGapForVerifier=0,
         print=true,
         padding=true

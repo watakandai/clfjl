@@ -139,7 +139,7 @@ function _verifyCandidateCLF(
             # Larger the gap is, the better the counterexample is.
             @constraint(model, valy ≥ valx + gap)
             # Only search in the safe region.
-            # @constraint(model, valx ≤ 0)
+            @constraint(model, valx ≤ 0)
         end
 
         @objective(model, Max, gap)
