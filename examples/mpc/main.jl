@@ -38,7 +38,7 @@ function main(;x0::Vector{<:Real},
     params = clfjl.Parameters(
         optDim=N,
         imgFileDir=joinpath(@__DIR__, "output$(N)D"),
-        maxIteration=100,
+        maxIteration=1000,
         maxLyapunovGapForGenerator=10,
         maxLyapunovGapForVerifier=10,
         thresholdLyapunovGapForGenerator=1e-5,

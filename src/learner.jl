@@ -57,7 +57,7 @@ function synthesizeCLF(x0::Vector{<:Real},
         params.print && println("|-- CE: ", x, ", ", verLyapunovGap)
         if verLyapunovGap < params.thresholdLyapunovGapForVerifier
             println("Valid controller: terminated")
-            @save "learnedCLFs" lfs counterExamples env
+            @save joinpath(@__DIR__, "learnedCLFs") lfs counterExamples env
             return CONTROLLER_FOUND, lfs
         end
 

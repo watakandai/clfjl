@@ -45,11 +45,11 @@ function main()
     params = clfjl.Parameters(
         optDim=N,
         imgFileDir=joinpath(@__DIR__, "output"),
-        maxIteration=100,
+        maxIteration=1000,
         maxLyapunovGapForGenerator=10,
         maxLyapunovGapForVerifier=10,
         thresholdLyapunovGapForGenerator=1e-5,
-        thresholdLyapunovGapForVerifier=-1e-5,
+        thresholdLyapunovGapForVerifier=0,
         print=true,
         padding=true,
         omplConfig=config,

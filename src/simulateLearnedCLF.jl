@@ -22,7 +22,7 @@ end
 
 
 function main(;imgFileDir::String=pwd())
-    @load "learnedCLFs" lfs counterExamples env
+    @load joinpath(@__DIR__, "learnedCLFs") lfs counterExamples env
     trajectories = clfjl.simulateWithCLFs(lfs, counterExamples, env; numStep=1000)
 
     inTerminal(x) = all(env.termSet.lb .<= x) && all(x .<+ env.termSet.ub)

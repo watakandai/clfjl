@@ -223,8 +223,8 @@ function simulateMPC(Ad, Bd, Q, R, QN, x0, xr, xmin, xmax, umin, umax;
     m = OSQP.Model()
 
     # Setup workspace
-    # OSQP.setup!(m; P=P, q=q, A=A, l=l, u=u, warm_start=true, verbose=false)
-    OSQP.setup!(m; P=P, q=q, A=A, l=l, u=u, warm_start=true, verbose=true)
+    OSQP.setup!(m; P=P, q=q, A=A, l=l, u=u, warm_start=true, verbose=false)
+    # OSQP.setup!(m; P=P, q=q, A=A, l=l, u=u, warm_start=true, verbose=true)
 
     # Simulate in closed loop
     X::Vector{Vector{<:Real}} = [x0]
@@ -329,8 +329,7 @@ function sampleSimpleCar(counterExamples::Vector{CounterExample},
                          env::Env,
                          Ad::Matrix{<:Real},
                          Bd::Matrix{<:Real},
-                         inputSet::HyperRectangle,
-                         addAllIfUnsafe::Bool=true)::Nothing
+                         inputSet::HyperRectangle)
     numDim = length(x0)
     status, X, U = simulateSimpleCar(sparse(Ad),
                                      sparse(Bd),
@@ -343,26 +342,24 @@ function sampleSimpleCar(counterExamples::Vector{CounterExample},
     # 2. Only add last two to unsafe counterexamples
     isUnsafe = status != TRAJ_FOUND
 
-    if isUnsafe && length(X) == 1
+    if length(X) == 1
         dynamics = Dynamics(Ad, Bd[:,1], numDim)
-        ce = CounterExample(X[1], -1, dynamics, X[1], false, true)
+        ce = CounterExample(X[1], -1, dynamics, X[1], false, isUnsafe)
         push!(counterExamples, ce)
-    end
-
-    if isUnsafe && !addAllIfUnsafe
-        for i in 1:length(X)-1
-            b = Bd * U[i]
-            dynamics = Dynamics(Ad, b, numDim)
-            ce = CounterExample(X[i], -1, dynamics, X[i+1], false, i == length(X)-1)
-            push!(counterExamples, ce)
-        end
         return
     end
 
-    for i in 1:length(X)-1
-        b = Bd * U[i]
+    if length(counterExamples) == 0
+        for i in 1:length(X)-1
+            b = Bd * U[i]
+            dynamics = Dynamics(Ad, b, numDim)
+            ce = CounterExample(X[i], -1, dynamics, X[i+1], false, isUnsafe)
+            push!(counterExamples, ce)
+        end
+    else
+        b = Bd * U[1]
         dynamics = Dynamics(Ad, b, numDim)
-        ce = CounterExample(X[i], -1, dynamics, X[i+1], false, isUnsafe)
+        ce = CounterExample(X[1], -1, dynamics, X[2], false, isUnsafe)
         push!(counterExamples, ce)
     end
 end
