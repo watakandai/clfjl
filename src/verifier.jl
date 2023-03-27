@@ -20,6 +20,7 @@ function verifyCandidateCLF(
         end
 
         inTerminal = isInTerminalRegion(counterExample, counterExamples, env, solver, N)
+        # inTerminal = true
 
         if inTerminal
             dim = Vector(1:N)
@@ -105,19 +106,21 @@ function _verifyCandidateCLF(
             end
         end
 
+        # @constraint(model, x .== [-0.45533232057538586, 0.12976138563310022])
+
         # Constraint 1: x ∈ S
         @constraint(model, x .≥ env.workspace.lb)
         @constraint(model, x .≤ env.workspace.ub)
         if !isnothing(dim) && !isnothing(bound)
             if lb
-                @constraint(model, x[dim] .≤ bound)
+                @constraint(model, x[dim] ≤ bound[dim])
             else
-                @constraint(model, x[dim] .≥ bound)
+                @constraint(model, x[dim] ≥ bound[dim])
             end
         end
         # Constraint 2: x ∈ R_k
         # Voronoi Constraints s.t. x is contained in the same area as the witness
-        for otherCounterExample in filter(x->x!=counterExample, counterExamples)
+        for otherCounterExample in filter(c->c!=counterExample && !c.isUnsafe, counterExamples)
             diff = (otherCounterExample.x-counterExample.x)
             vecx = x - counterExample.x
             @constraint(model, dot(diff, vecx) ≤ norm(diff, 2)^2 / 2)
@@ -169,7 +172,7 @@ function isInTerminalRegion(counterExample, counterExamples, env, solver, N)
 
     # Constraint 2: x ∈ R_k
     # Voronoi Constraints s.t. x is contained in the same area as the witness
-    for otherCounterExample in filter(x->x!=counterExample, counterExamples)
+    for otherCounterExample in filter(c->c!=counterExample && !c.isUnsafe, counterExamples)
         diff = (otherCounterExample.x-counterExample.x)
         vecx = x - counterExample.x
         @constraint(model, dot(diff, vecx) ≤ norm(diff, 2)^2 / 2)

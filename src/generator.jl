@@ -47,7 +47,7 @@ function generateCandidateCLF(counterExamples::Vector{CounterExample},
             # -20 + 2 <= -10
             if !counterExample.isUnsafe
                 @constraint(model, valy + gap ≤ valx)
-                # @constraint(model, valy + gap*α ≤ valx)
+                @constraint(model, valy + gap*α ≤ valx)
             end
         end
     end

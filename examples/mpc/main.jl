@@ -5,7 +5,8 @@ using Plots; gr()
 import YAML
 using Suppressor
 
-using clfjl
+# using clfjl
+include("../../src/clfjl.jl")
 const GUROBI_ENV = Gurobi.Env()
 
 
@@ -38,6 +39,7 @@ function main(;x0::Vector{<:Real},
     params = clfjl.Parameters(
         optDim=N,
         imgFileDir=joinpath(@__DIR__, "output$(N)D"),
+        lfsFileDir=@__DIR__,
         maxIteration=1000,
         maxLyapunovGapForGenerator=10,
         maxLyapunovGapForVerifier=10,
@@ -71,22 +73,22 @@ function main(;x0::Vector{<:Real},
             #       1 0;
             #       0 1]
             velocity = 0.1
-            # Ad = [1 0;
-            #       velocity 1]
-            # Bd = [1, 0][:, :]       # [:,:] converts vec to matrix
+            Ad = [1 0;
+                  velocity 1]
+            Bd = [1, 0][:, :]       # [:,:] converts vec to matrix
             # X = [x, y, θ], U = [v=1, ω]
-            Ad = [1 0 0;            # x' = x + v
-                  0 1 velocity;     # y' = y + vθ
-                  0 0 1;]           # θ' = θ + ω
-            Bd = [velocity 0;
-                  0 0;
-                  0 1;]
+            # Ad = [1 0 0;            # x' = x + v
+            #       0 1 velocity;     # y' = y + vθ
+            #       0 0 1;]           # θ' = θ + ω
+            # Bd = [velocity 0;
+            #       0 0;
+            #       0 1;]
         return clfjl.sampleSimpleCar(counterExamples, x0, env, Ad, Bd, inputSet)
     end
 
-    # clfjl.synthesizeCLF(params, env, solver, sampleSimpleCar, clfjl.plot2DCLF)
+    clfjl.synthesizeCLF(x0, params, env, solver, sampleSimpleCar, clfjl.plot2DCLF)
     # clfjl.synthesizeCLF(x0, params, env, solver, sampleSimpleCar, clfjl.plot3DCLF)
-    clfjl.synthesizeCLF(x0, params, env, solver, sampleSimpleCar)
+    # clfjl.synthesizeCLF(x0, params, env, solver, sampleSimpleCar)
 end
 
 
@@ -103,24 +105,24 @@ end
     #      inputLB=[-0.1, -0.1],
     #      inputUB=[ 0.1,  0.1])
     ## 2D: X=[θ, y] , U=[ω]
-    # main(x0=[pi/4, 0.2],
-    #      initLB=[-pi/4, 0.1],
-    #      initUB=[ pi/4, 0.3],
-    #      termLB=[-pi/12, -0.05],
-    #      termUB=[ pi/12,  0.05],
-    #      boundLB=[-pi/2, -0.1],
-    #      boundUB=[ pi/2,  1.0],
-    #      inputLB=[-0.1],
-    #      inputUB=[ 0.1])
+    main(x0=[pi/12, 0.5],
+         initLB=[-pi/12, 0.5],
+         initUB=[ pi/12, 0.6],
+         termLB=[-pi/4, -0.15],
+         termUB=[ pi/4,  0.15],
+         boundLB=[-pi/2, -1.0],
+         boundUB=[ pi/2,  1.0],
+         inputLB=[-1],
+         inputUB=[ 1])
     ## 3D: X=[x, y, θ], U=[v=1, ω]
-    main(x0=[0., 0.2, pi/4],
-         initLB=[-0.05, 0.1, -pi/4],
-         initUB=[ 0.05, 0.3,  pi/4],
-         termLB=[2.0, -0.05, -pi/6],
-         termUB=[4.0,  0.05,  pi/6],
-         boundLB=[-1.0, -0.3, -pi/2],
-         boundUB=[ 5.0,  1.0,  pi/2],
-         inputLB=[1.0, -pi/12],
-         inputUB=[1.0,  pi/12])
+    # main(x0=[0., 0.55, pi/12],
+    #      initLB=[-0.1, 0.5, -pi/12],
+    #      initUB=[ 0.1, 0.6,  pi/12],
+    #      termLB=[2.0, -0.2, -pi/6],
+    #      termUB=[4.0,  0.2,  pi/6],
+    #      boundLB=[-1.0, -0.3, -pi/2],
+    #      boundUB=[ 5.0,  1.5,  pi/2],
+    #      inputLB=[1.0, -pi/12],
+    #      inputUB=[1.0,  pi/12])
 end
 # ------------------------------------------------------------------ #

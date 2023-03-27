@@ -25,6 +25,7 @@ function main()
     params = clfjl.Parameters(
         optDim=N,
         imgFileDir=joinpath(@__DIR__, "output"),
+        lfsFileDir=@__DIR__,
         maxIteration=30,
         maxLyapunovGapForGenerator=10,
         maxLyapunovGapForVerifier=10,

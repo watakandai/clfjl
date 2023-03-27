@@ -57,7 +57,9 @@ function synthesizeCLF(x0::Vector{<:Real},
         params.print && println("|-- CE: ", x, ", ", verLyapunovGap)
         if verLyapunovGap < params.thresholdLyapunovGapForVerifier
             println("Valid controller: terminated")
-            @save joinpath(@__DIR__, "learnedCLFs") lfs counterExamples env
+            @save joinpath(params.lfsFileDir, "learnedCLFs.jld2") lfs counterExamples env
+            trajectories = simulateWithCLFs(lfs, counterExamples, env; numStep=1000)
+            plotTrajectories(trajectories, lfs, env; imgFileDir=params.imgFileDir)
             return CONTROLLER_FOUND, lfs
         end
 

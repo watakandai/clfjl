@@ -7,6 +7,7 @@ import Base.@kwdef
 @kwdef struct Parameters
     optDim::Integer
     imgFileDir::String
+    lfsFileDir::String
     maxIteration::Real
     maxLyapunovGapForGenerator::Real
     maxLyapunovGapForVerifier::Real

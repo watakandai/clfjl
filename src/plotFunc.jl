@@ -100,11 +100,22 @@ function plot2DCLF(iter, counterExamples, env, params, lfs; regions=nothing, fil
     contour!(x, y, Vtemp, levels=[0], color=:red, style=:dot, linewidth=2, legend=:none)
     contour!(x, y, z, levels=100, color=:turbo, colorbar=true)
 
-    listOfPoints = map(c -> ifelse(c.isTerminal, [c.x], [c.x]), counterExamples)
-    XY = reduce(vcat, listOfPoints; init=Vector{Vector{Float64}}())
-    X = map(x -> x[1], XY)
-    Y = map(x -> x[2], XY)
-    scatter!(X, Y, markersize = 3)
+    for ce in filter(c -> !c.isUnsafe, counterExamples)
+        x = ce.x
+        y = ce.y
+        plot!([x[1], y[1]], [x[2], y[2]], arrow=(:open, 1), markershapes=[:circle, :star5], markersize=2, color=:blue)
+    end
+    # ces = reduce(vcat, listOfPoints; init=Vector{Vector{Float64}}())
+    # X = map(c -> c.x[1], ces)
+    # Y = map(c -> c.x[2], ces)
+    # scatter!(X, Y, markersize = 3)
+    scatter!([counterExamples[end].x[1]], [counterExamples[end].x[2]], markersize = 3, color=:black)
+
+    unsafeCes = filter(c -> c.isUnsafe, counterExamples)
+    # XY_ = reduce(vcat, unSafelistOfPoints; init=Vector{Vector{Float64}}())
+    X_ = map(c -> c.x[1], unsafeCes)
+    Y_ = map(c -> c.x[2], unsafeCes)
+    scatter!(X_, Y_, markersize=2, color=:red)
 
     xmin = Float64(env.workspace.lb[1])
     xmax = Float64(env.workspace.ub[1])
@@ -164,11 +175,11 @@ function plot3DCLF(iter, counterExamples, env, params, lfs; regions=nothing, fil
         XY = reduce(vcat, listOfPoints; init=Vector{Vector{Float64}}())
         X = map(x -> x[1], XY)
         Y = map(x -> x[2], XY)
-        del, vor, _ = deldir(X, Y, [xmin, xmax, ymin, ymax], 1e-10)
-        # Dx, Dy = edges(del)
-        Vx, Vy = edges(vor)
+        # del, vor, _ = deldir(X, Y, [xmin, xmax, ymin, ymax], 1e-10)
+        # # Dx, Dy = edges(del)
+        # Vx, Vy = edges(vor)
 
-        plot!(Vx, Vy, style=:dash, color=:black, label = "Voronoi")
+        # plot!(Vx, Vy, style=:dash, color=:black, label = "Voronoi")
 
         if isnothing(params.imgFileDir)
             print(pwd())
