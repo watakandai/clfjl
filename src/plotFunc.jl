@@ -162,21 +162,23 @@ function plot3DCLF(iter, counterExamples, env, params, lfs; regions=nothing, fil
         contour!(x, y, Vtemp, levels=[0], color=:red, style=:dot, linewidth=2, legend=:none, clims=clims)
         contour!(x, y, z, levels=100, color=:turbo, colorbar=true, clims=clims)
 
-        listOfPoints = map(c -> ifelse(c.x==c.y, [c.x], [c.x, c.y]) , counterExamples)
-        XY = reduce(vcat, listOfPoints; init=Vector{Vector{Float64}}())
-        X = map(x -> x[1], XY)
-        Y = map(x -> x[2], XY)
-        scatter!(X, Y, markersize = 3)
+        for ce in filter(c -> !c.isUnsafe, counterExamples)
+            x = ce.x
+            y = ce.y
+            plot!([x[1], y[1]], [x[2], y[2]], arrow=(:open, 0.5), markershapes=[:circle, :star5], markersize=2, color=:blue)
+        end
+        scatter!([counterExamples[end].x[1]], [counterExamples[end].x[2]], markersize = 3, color=:red)
 
         xmin = Float64(env.workspace.lb[1])
         xmax = Float64(env.workspace.ub[1])
         ymin = Float64(env.workspace.lb[2])
         ymax = Float64(env.workspace.ub[2])
 
-        listOfPoints = map(c -> [c.x], counterExamples)
-        XY = reduce(vcat, listOfPoints; init=Vector{Vector{Float64}}())
-        X = map(x -> x[1], XY)
-        Y = map(x -> x[2], XY)
+        unsafeCes = filter(c -> c.isUnsafe, counterExamples)
+        # XY_ = reduce(vcat, unSafelistOfPoints; init=Vector{Vector{Float64}}())
+        X_ = map(c -> c.x[1], unsafeCes)
+        Y_ = map(c -> c.x[2], unsafeCes)
+        scatter!(X_, Y_, markersize=2, color=:white)
         # del, vor, _ = deldir(X, Y, [xmin, xmax, ymin, ymax], 1e-10)
         # # Dx, Dy = edges(del)
         # Vx, Vy = edges(vor)

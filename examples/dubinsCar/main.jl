@@ -33,8 +33,8 @@ function main()
     initSet = clfjl.HyperRectangle(lb, ub)
     @assert all(lb .<= x0) && all(x0 .<= ub)    # x0 ∈ I
 
-    lb = config["goal"][1:N] .- config["goalThreshold"]
-    ub = config["goal"][1:N] .+ config["goalThreshold"]
+    lb = config["goalLowerBound"]
+    ub = config["goalUpperBound"]
     termSet = clfjl.HyperRectangle(lb, ub)
     @assert !(all(lb .<= x0) && all(x0 .<= ub)) # x0 ∉ T
 
@@ -66,11 +66,11 @@ function main()
     dt = config["propagationStepSize"]
 
     # TODO: Translate data X and U to θ
-    function getDynamicsf(θ)::clfjl.Dynamics
+    function getDynamicsf(θ, dt_)::clfjl.Dynamics
         velocity = 0.1
         A = [1 0;
              0 1]
-        b = [velocity*cos(θ)*dt, velocity*sin(θ)*dt]
+        b = [velocity*cos(θ)*dt_, velocity*sin(θ)*dt_]
         # f(x) = A * x + b
         return clfjl.Dynamics(A, b, N)
     end

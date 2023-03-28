@@ -1,9 +1,11 @@
 runTime: 10
 numStateDim: 3
 numSpaceDim: 2
-goalThreshold: 0.1
 start: [0.0, 1.0, 0.0]          # This will be set by the verifier
 goal:  [1.0, 0.0, 0.0]          # This will be set by the verifier
+goalLowerBound: [0.9, -0.1]
+goalUpperBound: [1.1,  0.1]
+goalWeight: [1, 1]
 lowerBound: [-0.5, -0.5, -3.14] # [x, y, theta]
 upperBound: [ 2.0,  2.0,  3.14] # [x, y, theta]
 controlLowerBound: [-0.1]      # omega
