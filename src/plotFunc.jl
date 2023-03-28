@@ -41,7 +41,11 @@ function plotEnv(env)
 
     X = [xmin, xmin, xmax, xmax, xmin]
     Y = [ymin, ymax, ymax, ymin, ymin]
-    plot(X, Y, c=:black, lw=2, aspect_ratio=:equal, legend=false)
+    plot(X, Y, c=:black, lw=2, aspect_ratio=:equal, legend=false,
+         guidefontsize=18,
+         tickfontsize=16,
+         right_margin=12Plots.mm,
+         left_margin=12Plots.mm)
 
     xmin = Float64(env.initSet.lb[1])
     xmax = Float64(env.initSet.ub[1])
@@ -76,6 +80,43 @@ function plotEnv(env)
 end
 
 
+function plotEnv3D(env)
+    # Plot the Boundary
+    xmin = Float64(env.workspace.lb[1])
+    xmax = Float64(env.workspace.ub[1])
+    ymin = Float64(env.workspace.lb[2])
+    ymax = Float64(env.workspace.ub[2])
+    zmin = Float64(env.workspace.lb[3])
+    zmax = Float64(env.workspace.ub[3])
+
+    X = [xmin, xmin, xmax, xmax, xmin]
+    Y = [ymin, ymax, ymax, ymin, ymin]
+    Z = [zmin, zmax, zmax, zmin, zmin]
+    plot(X, Y, Z, c=:black, lw=2, aspect_ratio=:equal, legend=false)
+
+    xmin = Float64(env.initSet.lb[1])
+    xmax = Float64(env.initSet.ub[1])
+    ymin = Float64(env.initSet.lb[2])
+    ymax = Float64(env.initSet.ub[2])
+    zmin = Float64(env.initSet.lb[3])
+    zmax = Float64(env.initSet.ub[3])
+    X = [xmin, xmin, xmax, xmax, xmin]
+    Y = [ymin, ymax, ymax, ymin, ymin]
+    Z = [zmin, zmax, zmax, zmin, zmin]
+    plot!(X, Y, Z, c=:gray, lw=2, aspect_ratio=:equal, legend=false)
+
+    xmin = Float64(env.termSet.lb[1])
+    xmax = Float64(env.termSet.ub[1])
+    ymin = Float64(env.termSet.lb[2])
+    ymax = Float64(env.termSet.ub[2])
+    zmin = Float64(env.termSet.lb[3])
+    zmax = Float64(env.termSet.ub[3])
+    X = [xmin, xmin, xmax, xmax, xmin]
+    Y = [ymin, ymax, ymax, ymin, ymin]
+    Z = [zmin, zmax, zmax, zmin, zmin]
+    plot!(X, Y, Z, c=:black, lw=2, aspect_ratio=:equal, legend=false)
+end
+
 function toObstacleString(o)
     x = o["x"]
     y = o["y"]
@@ -106,22 +147,17 @@ function plot2DCLF(iter, counterExamples, env, params, lfs; regions=nothing, fil
         y = ce.y
         plot!([x[1], y[1]], [x[2], y[2]], arrow=(:open, 0.5), markershapes=[:circle, :star5], markersize=2, color=:blue)
     end
-    # ces = reduce(vcat, listOfPoints; init=Vector{Vector{Float64}}())
-    # X = map(c -> c.x[1], ces)
-    # Y = map(c -> c.x[2], ces)
-    # scatter!(X, Y, markersize = 3)
     scatter!([counterExamples[end].x[1]], [counterExamples[end].x[2]], markersize = 3, color=:red)
 
     unsafeCes = filter(c -> c.isUnsafe, counterExamples)
-    # XY_ = reduce(vcat, unSafelistOfPoints; init=Vector{Vector{Float64}}())
     X_ = map(c -> c.x[1], unsafeCes)
     Y_ = map(c -> c.x[2], unsafeCes)
     scatter!(X_, Y_, markersize=2, color=:white)
 
-    xmin = Float64(env.workspace.lb[1])
-    xmax = Float64(env.workspace.ub[1])
-    ymin = Float64(env.workspace.lb[2])
-    ymax = Float64(env.workspace.ub[2])
+    # xmin = Float64(env.workspace.lb[1])
+    # xmax = Float64(env.workspace.ub[1])
+    # ymin = Float64(env.workspace.lb[2])
+    # ymax = Float64(env.workspace.ub[2])
 
     # del, vor, _ = deldir(X, Y, [xmin, xmax, ymin, ymax], 1e-9)
     # # Dx, Dy = edges(del)
@@ -143,16 +179,15 @@ end
 function plot3DCLF(iter, counterExamples, env, params, lfs; regions=nothing, filename="")
 
     Nd = params.optDim
-    Ns = env.numSpaceDim
 
     dxy = 0.1 * (env.workspace.ub - env.workspace.lb)
     x = range(env.workspace.lb[1]-dxy[1], env.workspace.ub[1]+dxy[1], length=100)
     y = range(env.workspace.lb[2]-dxy[2], env.workspace.ub[2]+dxy[2], length=100)
-    z = range(env.workspace.lb[3]-dxy[3], env.workspace.ub[3]+dxy[3], length=3)
+    z = range(env.workspace.lb[3]-dxy[3], env.workspace.ub[3]+dxy[3], length=5)
     sumVals = sum(maximum.(map(v->abs.(collect(v)), zip(env.workspace.lb[1:Nd], env.workspace.ub[1:Nd]))))
     clims = (-0.5*sumVals, 0.5*sumVals)
 
-    for z_ in z
+     for z_ in z
         plotEnv(env)
         plotUnreachableRegion(env, regions=regions)
 
@@ -169,39 +204,55 @@ function plot3DCLF(iter, counterExamples, env, params, lfs; regions=nothing, fil
         end
         scatter!([counterExamples[end].x[1]], [counterExamples[end].x[2]], markersize = 3, color=:red)
 
-        xmin = Float64(env.workspace.lb[1])
-        xmax = Float64(env.workspace.ub[1])
-        ymin = Float64(env.workspace.lb[2])
-        ymax = Float64(env.workspace.ub[2])
-
         unsafeCes = filter(c -> c.isUnsafe, counterExamples)
-        # XY_ = reduce(vcat, unSafelistOfPoints; init=Vector{Vector{Float64}}())
         X_ = map(c -> c.x[1], unsafeCes)
         Y_ = map(c -> c.x[2], unsafeCes)
-        scatter!(X_, Y_, markersize=2, color=:white)
+        scatter!(X_, Y_, markersize=2, color=:green, shape=:xcross)
+        # xmin = Float64(env.workspace.lb[1])
+        # xmax = Float64(env.workspace.ub[1])
+        # ymin = Float64(env.workspace.lb[2])
+        # ymax = Float64(env.workspace.ub[2])
         # del, vor, _ = deldir(X, Y, [xmin, xmax, ymin, ymax], 1e-10)
         # # Dx, Dy = edges(del)
         # Vx, Vy = edges(vor)
-
         # plot!(Vx, Vy, style=:dash, color=:black, label = "Voronoi")
+        savefigure(params.imgFileDir, "$(filename)$(iter)@z=$z_.png")
+    end
 
-        if isnothing(params.imgFileDir)
-            print(pwd())
-        else
-            if !isdir(params.imgFileDir)
-                mkdir(params.imgFileDir)
-            end
-            filepath = joinpath(params.imgFileDir, "$(filename)$(iter)@z=$z_.png")
-            savefig(filepath)
+   # plotEnv3D(env)
+    # for ce in filter(c -> !c.isUnsafe, counterExamples)
+    #     x = ce.x
+    #     y = ce.y
+    #     plot!([x[1], y[1]], [x[2], y[2]], [x[3], y[3]], arrow=(:open, 0.5), markershapes=[:circle, :star5], markersize=2, color=:blue)
+    # end
+    # scatter!([counterExamples[end].x[1]],
+    #          [counterExamples[end].x[2]],
+    #          [counterExamples[end].x[3]],
+    #          markersize = 3, color=:red)
+    # unsafeCes = filter(c -> c.isUnsafe, counterExamples)
+    # X_ = map(c -> c.x[1], unsafeCes)
+    # Y_ = map(c -> c.x[2], unsafeCes)
+    # Z_ = map(c -> c.x[3], unsafeCes)
+    # scatter!(X_, Y_, Z_, markersize=2, color=:green, shape=:xcross)
+
+    # savefigure(params.imgFileDir, "$(filename)$(iter)3D.png")
+end
+
+
+function savefigure(imgFileDir, filename)
+    if isnothing(imgFileDir)
+        print(pwd())
+    else
+        if !isdir(imgFileDir)
+            mkdir(imgFileDir)
         end
+        filepath = joinpath(imgFileDir, "$(filename)")
+        savefig(filepath)
     end
 end
 
 
 function plot4DCLF(iter, counterExamples, params, lfs; regions=nothing, filename="")
-
-    Nd = params.optDim
-    Ns = env.numSpaceDim
 
     x = range(1.1*env.workspace.lb[1], 1.1*env.workspace.ub[1], length=100)
     y = range(1.1*env.workspace.lb[2], 1.1*env.workspace.ub[2], length=100)

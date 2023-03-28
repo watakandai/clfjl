@@ -1,5 +1,6 @@
 using DelimitedFiles
 using SparseArrays, OSQP
+using Plots
 
 @enum SampleStatus begin
     TRAJ_FOUND = 0
@@ -73,7 +74,8 @@ function defaultSetOmplConfigFunc(omplConfig::Dict{Any, Any}, x0::Vector{<:Real}
 end
 
 "Sample a trajectory for the Dubin's Car model using the OMPL sampling-based planners"
-function sampleOMPLDubin(counterExamples::Vector{CounterExample},
+function sampleOMPLDubin(iter,
+                        counterExamples::Vector{CounterExample},
                          x0::Vector{<:Real},
                          env::Env,
                          N::Integer,
@@ -85,19 +87,30 @@ function sampleOMPLDubin(counterExamples::Vector{CounterExample},
                          filterStateFunc::Function=(x,u)->x,
                          filterInputFunc::Function=(x,u)->u,
                          setOmplConfigFunc::Function=defaultSetOmplConfigFunc,
-                         )
+                         numTrial::Integer=5)
 
     @assert length(x0) == N
     status, X, U, Dt = simulateOMPLDubin(x0,
-                                     env,
-                                     N,
-                                     execPath,
-                                     pathFilePath,
-                                     omplConfig,
-                                     setOmplConfigFunc)
+                                         env,
+                                         N,
+                                         execPath,
+                                         pathFilePath,
+                                         omplConfig,
+                                         setOmplConfigFunc,
+                                         numTrial)
 
     # Add all data points in the data as unsafe counterexamples
     isUnsafe = status != TRAJ_FOUND
+    println("isUnsafe: ", isUnsafe, ", status: ", status, ", length(X): ", length(X))
+
+    numDim = 4
+    time = 1:length(X)
+    labels = ["x", "y", "v", "θ"]
+    plot(legend=true)
+    for i in 1:numDim
+        plot!(time, getindex.(X, i), label=labels[i])
+    end
+    savefigure("/home/kandai/Documents/projects/research/clfjl/examples/dubinsCarWithAcceleration/output", "$(iter)Trajectory.png")
 
     if length(X) == 1
         dt = 0.1
@@ -105,6 +118,7 @@ function sampleOMPLDubin(counterExamples::Vector{CounterExample},
         dynamics = getDynamicsf(u0..., dt)
         α = 1.0
         x = filterStateFunc(X[1], u0)
+        # ce = CounterExample(x, α, dynamics, x, false, isUnsafe, X)
         ce = CounterExample(x, α, dynamics, x, false, isUnsafe)
         push!(counterExamples, ce)
         return
@@ -129,6 +143,7 @@ function sampleOMPLDubin(counterExamples::Vector{CounterExample},
         uarg = filterInputFunc(X[1], u)
         dynamics = getDynamicsf(uarg..., dt)
         α = norm(x′-x, 2)
+        # ce = CounterExample(x, α, dynamics, x′, false, isUnsafe, X)
         ce = CounterExample(x, α, dynamics, x′, false, isUnsafe)
         push!(counterExamples, ce)
     # end
@@ -146,7 +161,7 @@ function simulateOMPLDubin(x0::Vector{<:Real},
                            )
 
     inTerminalSet(x) = all(env.termSet.lb .<= x) && all(x .<= env.termSet.ub)
-    outOfBound(x) = any(x .<= env.workspace.lb) && any(env.workspace.ub .<= x)
+    outOfBound(x) = any(x .< env.workspace.lb) && any(env.workspace.ub .< x)
     # Ideally, we must convert all obstacles to convex obstacles
     inObstacles(x) = any(map(o->all(o.lb .≤ x) && all(x .≤ o.ub), env.obstacles))
     obstacles = "obstacles" in keys(omplConfig) ? omplConfig["obstacles"] : []
@@ -187,7 +202,9 @@ function simulateOMPLDubin(x0::Vector{<:Real},
             X = [data[i, 1:simN] for i in 1:numData]
             U = [data[i, simN+1:end-1] for i in 1:numData]
             dt = [data[i, end] for i in 1:numData]
-            monoDist = all([norm(X[i][1:2]-xT,2) >= norm(X[i+1][1:2]-xT,2) for i in 1:numData-1])
+            # monoDist = all([norm(X[i][1:2]-xT,2) >= norm(X[i+1][1:2]-xT,2) for i in 1:numData-1])
+            monoDist = true
+            println("Terminal condition: $(inTerminalSet(X[end][1:N])), at $(X[end]), monoDist=$(monoDist)")
             if inTerminalSet(X[end][1:N]) && monoDist
                 if contains(outputStr, "Found solution with cost ")
                     r = r"Found solution with cost (\d+\.\d+)"
@@ -195,10 +212,12 @@ function simulateOMPLDubin(x0::Vector{<:Real},
                     cost = minimum(csts)
                 end
                 status = TRAJ_FOUND
+                return status, X, U, dt
             end
             # status == TRAJ_INFEASIBLE
         end
 
+        # println("Traj:$iTraj, statu=$status, cost=$cost")
         push!(costs, cost)
         push!(Xs, X)
         push!(Us, U)
@@ -432,9 +451,9 @@ function simulateSimpleCar(Ad, Bd, x0::Vector{<:Real},
 
     # # Objective function
     if length(x0) == 2
-        Q = spdiagm([0.001, 1])              # Weights for Xs from 0:N-1
+        Q = spdiagm([0.1, 1])              # Weights for Xs from 0:N-1
         QN = Q                        # Weights for the terminal state X at N (Xn or xT)
-        R = 10 * speye(nu)
+        R = 100 * speye(nu)
     else
         Q = spdiagm(ones(nx))           # Weights for Xs from 0:N-1
         QN = 10 * Q                          # Weights for the terminal state X at N (Xn or xT)

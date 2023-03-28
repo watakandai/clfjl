@@ -64,8 +64,9 @@ end
 function plotTrajectories(trajectories, lfs, env; imgFileDir::String=pwd(), filename="SimulatedControlTrajectories")
     plotEnv(env)
 
-    x = range(1.1*env.workspace.lb[1], 1.1*env.workspace.ub[1], length=100)
-    y = range(1.1*env.workspace.lb[2], 1.1*env.workspace.ub[2], length=100)
+    dxy = 0.1 * (env.workspace.ub - env.workspace.lb)
+    x = range(env.workspace.lb[1]-dxy[1], env.workspace.ub[1]+dxy[1], length=100)
+    y = range(env.workspace.lb[2]-dxy[2], env.workspace.ub[2]+dxy[2], length=100)
     Vtemp(x_, y_) = V([x_, y_], lfs)
     z = @. Vtemp(x', y)
     contour!(x, y, Vtemp, levels=[0], color=:red, style=:dot, linewidth=2, legend=:none)

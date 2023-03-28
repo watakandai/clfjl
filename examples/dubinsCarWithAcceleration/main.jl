@@ -7,14 +7,15 @@ using Plots; gr()
 import YAML
 using Suppressor
 
-using clfjl
+# using clfjl
+include("../../src/clfjl.jl")
 
 const GUROBI_ENV = Gurobi.Env()
 
 # X = [x, y, v], U = [α, θ]
 function main()
-    execPath = "/Users/kandai/Documents/projects/research/clf/build/DubinsCarWithAcceleration"
-    # execPath = "/home/kandai/Documents/projects/research/ControlLyapunovFunctionPlanners//build/DubinsCarWithAcceleration"
+    # execPath = "/Users/kandai/Documents/projects/research/clf/build/DubinsCarWithAcceleration"
+    execPath = "/home/kandai/Documents/projects/research/ControlLyapunovFunctionPlanners//build/DubinsCarWithAcceleration"
     configPath = joinpath(@__DIR__, "config.yaml")
 
     config::Dict{Any, Any} = YAML.load(open(configPath))
@@ -25,14 +26,14 @@ function main()
     # Under the hood, X = [x, y, v, θ], U = [α, ω]
     # In the optimization, we assume X = [x, y, v], U = [α, θ]
     lb = [-0.1, 0.9, 0.0]
-    ub = [ 0.1, 1.1, 2.0]
+    ub = [ 0.1, 1.1, 0.1]
     initSet = clfjl.HyperRectangle(lb, ub)
     @assert all(lb .<= x0) && all(x0 .<= ub)    # x0 ∈ I
 
     # lb = config["goal"][1:N] .- config["goalThreshold"]     # TODO: fix velocity threshold
     # ub = config["goal"][1:N] .+ config["goalThreshold"]
-    lb = config["goalLowerBound"]
-    ub = config["goalUpperBound"]
+    lb = config["goalLowerBound"][1:N]
+    ub = config["goalUpperBound"][1:N]
     termSet = clfjl.HyperRectangle(lb, ub)
     @assert !(all(lb .<= x0) && all(x0 .<= ub)) # x0 ∉ T
 
@@ -74,13 +75,16 @@ function main()
     filterStateFunc(x, u) = x[1:N]
     filterInputFunc(x, u) = [u[1], x[N+1]]  # u=[α, ω], x=[x, y, v, θ] => u[1]=α, x[N+1]=θ
 
-    function setOmplConfigFunc(omplConfig, x0, xT)
-        omplConfig_ = deepcopy(omplConfig)
-        θ = atan(xT[2] - x0[2], xT[1] - x0[1])
-        omplConfig_["start"][1:N] = x0
-        omplConfig_["start"][N+1] = θ
-        omplConfig_["goal"][N+1] = θ
-        return omplConfig_
+    function setOmplConfigFunc(omplConfig_, x0_, xT_)
+        omplConfig__ = deepcopy(omplConfig_)
+        θ_ = atan(xT_[2] - x0_[2], xT_[1] - x0_[1])
+        omplConfig__["start"][1:N] = x0_
+        omplConfig__["start"][N+1] = θ_
+        omplConfig__["goalLowerBound"][1:N] .+= 0.05
+        omplConfig__["goalUpperBound"][1:N] .-= 0.05
+        omplConfig__["goalLowerBound"][N+1] = θ_ - 0.1
+        omplConfig__["goalUpperBound"][N+1] = θ_ + 0.1
+        return omplConfig__
     end
 
     env = clfjl.Env(numStateDim=config["numStateDim"],
@@ -94,16 +98,19 @@ function main()
     solver() = Model(optimizer_with_attributes(() -> Gurobi.Optimizer(GUROBI_ENV),
                                             "OutputFlag"=>false))
 
-    function sampleOMPLDubinsCar(counterExamples::Vector{clfjl.CounterExample},
+    numTrial = 10
+    function sampleOMPLDubinsCar(iter,
+                                 counterExamples::Vector{clfjl.CounterExample},
                                  x0_::Vector{<:Real},
                                  env::clfjl.Env)
-        return clfjl.sampleOMPLDubin(counterExamples, x0_, env,
+        return clfjl.sampleOMPLDubin(iter,
+                                     counterExamples, x0_, env,
                                      N, execPath, pathFilePath,
                                      config, inputSet,
                                      getDynamicsf,
                                      filterStateFunc,
                                      filterInputFunc,
-                                     setOmplConfigFunc)
+                                     setOmplConfigFunc, numTrial)
     end
 
     "Synthesize Control Lyapunov functions for the given env"

@@ -21,7 +21,7 @@ function synthesizeCLF(x0::Vector{<:Real},
 
         iter += 1
         params.print && println("Sampling ...")
-        sampleFunc(counterExamples, x, env)
+        sampleFunc(iter, counterExamples, x, env)
 
         params.print && println("Iter: ", iter, " - ncl: ", length(counterExamples))
         if iter > params.maxIteration

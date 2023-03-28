@@ -52,7 +52,7 @@ end
 end
 
 
-struct CounterExample
+mutable struct CounterExample
     x::Vector{<:Real}
     α::Real
     dynamics::Dynamics

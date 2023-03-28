@@ -17,8 +17,8 @@ const GUROBI_ENV = Gurobi.Env()
 # We are going to assume that the model is
 #   X = [x, y], U = [θ]
 function main()
-    execPath = "/Users/kandai/Documents/projects/research/clf/build/DubinsCar"
-    # execPath = "/home/kandai/Documents/projects/research/ControlLyapunovFunctionPlanners/build/DubinsCar"
+    # execPath = "/Users/kandai/Documents/projects/research/clf/build/DubinsCar"
+    execPath = "/home/kandai/Documents/projects/research/ControlLyapunovFunctionPlanners/build/DubinsCar"
     configPath = joinpath(@__DIR__, "config.yaml")
 
     config::Dict{Any, Any} = YAML.load(open(configPath))
@@ -35,6 +35,8 @@ function main()
 
     lb = config["goalLowerBound"]
     ub = config["goalUpperBound"]
+    # lb = config["goal"][1:N] .- config["goalThreshold"]
+    # ub = config["goal"][1:N] .+ config["goalThreshold"]
     termSet = clfjl.HyperRectangle(lb, ub)
     @assert !(all(lb .<= x0) && all(x0 .<= ub)) # x0 ∉ T
 

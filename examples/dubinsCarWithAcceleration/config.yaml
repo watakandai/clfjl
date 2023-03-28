@@ -3,13 +3,13 @@ numStateDim: 4                        # X = [x,y,v,\theta]
 numSpaceDim: 2
 start: [0.0, 1.0, 0.0, 0.0]           # This will be set by the verifier
 goal:  [1.0, 0.0, 0.0, 0.0]           # This will be set by the verifier
-goalLowerBound: [0.9, -0.1, -0.1]
-goalUpperBound: [1.1,  0.1,  0.1]
-goalWeight: [1, 1, 1]
+goalLowerBound: [0.9, -0.1, 0.0, 0.0]
+goalUpperBound: [1.1,  0.1, 0.3, 0.0]
+goalWeight: [1.0, 1.0, 1.0]
 lowerBound: [-0.5, -0.5, -0.1, -3.14]
-upperBound: [ 2.0,  2.0,  3.0,  3.14]
-controlLowerBound: [-0.1, -0.1]       # U = [a, omega]
-controlUpperBound: [ 0.1,  0.1]       # U = [a, omega]
+upperBound: [ 2.0,  2.0,  1.0,  3.14]
+controlLowerBound: [-1.0, -0.01]       # U = [a, omega]
+controlUpperBound: [ 1.0,  0.01]       # U = [a, omega]
 goalBias: 0.1
 selectionRadius: 0.6
 pruningRadius: 0.08

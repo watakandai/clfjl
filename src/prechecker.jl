@@ -7,7 +7,6 @@ function getSupportingHyperPlane(obstacle::HyperRectangle,
                                  separateInit::Bool=true)::LyapunovFunctions
 
     Nd = params.optDim
-    Ns = env.numSpaceDim
     model = solver()
 
     xT = @variable(model, [1:Nd])
