@@ -1,0 +1,18 @@
+runTime: 10
+numStateDim: 3
+numSpaceDim: 2
+goalThreshold: 0.1
+start: [0.0, 1.0, 0.0]          # This will be set by the verifier
+goal:  [1.0, 0.0, 0.0]          # This will be set by the verifier
+lowerBound: [-0.5, -0.5, -3.14] # [x, y, theta]
+upperBound: [ 2.0,  2.0,  3.14] # [x, y, theta]
+controlLowerBound: [-0.1]      # omega
+controlUpperBound: [ 0.1]      # omega
+goalBias: 0.1
+selectionRadius: 0.6
+pruningRadius: 0.08
+propagationStepSize: 0.1
+controlDurationBound: [1, 10]
+planner: "SST"
+objective: "PathLengthObjWithCostToGo"
+file: "path.txt"

@@ -66,6 +66,12 @@ function toObstacleString(o::Dict{Any, Any})::String
 end
 
 
+function defaultSetOmplConfigFunc(omplConfig::Dict{Any, Any}, x0::Vector{<:Real}, args...)::Dict{Any, Any}
+    omplConfig_ = deepcopy(omplConfig)
+    omplConfig_["start"] = x0
+    return omplConfig_
+end
+
 "Sample a trajectory for the Dubin's Car model using the OMPL sampling-based planners"
 function sampleOMPLDubin(counterExamples::Vector{CounterExample},
                          x0::Vector{<:Real},
@@ -75,43 +81,57 @@ function sampleOMPLDubin(counterExamples::Vector{CounterExample},
                          pathFilePath::String,
                          omplConfig::Dict{Any, Any},
                          inputSet::HyperRectangle,
-                         getDynamicsf::Function)
+                         getDynamicsf::Function,
+                         filterStateFunc::Function=(x,u)->x,
+                         filterInputFunc::Function=(x,u)->u,
+                         setOmplConfigFunc::Function=defaultSetOmplConfigFunc,
+                         )
 
     @assert length(x0) == N
-    status, X, U = simulateOMPLDubin(x0,
+    status, X, U, Dt = simulateOMPLDubin(x0,
                                      env,
                                      N,
                                      execPath,
                                      pathFilePath,
-                                     omplConfig)
+                                     omplConfig,
+                                     setOmplConfigFunc)
 
     # Add all data points in the data as unsafe counterexamples
     isUnsafe = status != TRAJ_FOUND
-    u0 = rand() * (inputSet.ub - inputSet.lb) + inputSet.lb
 
     if length(X) == 1
-        dynamics = getDynamicsf(u0...)
+        dt = 0.1
+        u0 = rand() * (inputSet.ub - inputSet.lb) + inputSet.lb
+        dynamics = getDynamicsf(u0..., dt)
         α = 1.0
-        ce = CounterExample(X[1], α, dynamics, X[1], false, isUnsafe)
+        x = filterStateFunc(X[1], u0)
+        ce = CounterExample(x, α, dynamics, x, false, isUnsafe)
         push!(counterExamples, ce)
         return
     end
-
-    if length(counterExamples) == 0 # We are doing for loop rn, let's do ce=1 next.
-        for i in 1:length(X)-1
-            u = Float64.(U[i+1])
-            dynamics = getDynamicsf(u...)
-            α = norm((X[i+1]-X[i])[1:2], 2)
-            ce = CounterExample(X[i], α, dynamics, X[i+1], false, isUnsafe)
-            push!(counterExamples, ce)
-        end
-    else
+    # if length(counterExamples) == 0 # We are doing for loop rn, let's do ce=1 next.
+        # for i in 1:length(X)-1
+        #     dt = Dt[i+1]
+        #     u = Float64.(U[i+1])
+        #     x = filterStateFunc(X[i], u)
+        #     x′ = filterStateFunc(X[i+1], u)
+        #     uarg = filterInputFunc(X[i], u)
+        #     dynamics = getDynamicsf(uarg..., dt)
+        #     α = norm(x′-x, 2)
+        #     ce = CounterExample(x, α, dynamics, x′, false, isUnsafe)
+        #     push!(counterExamples, ce)
+        # end
+    # else
+        dt = Dt[2]
         u = Float64.(U[2])
-        dynamics = getDynamicsf(u...)
-        α = norm((X[2]-X[1])[1:2], 2)
-        ce = CounterExample(X[1], α, dynamics, X[2], false, isUnsafe)
+        x = filterStateFunc(X[1], u)
+        x′ = filterStateFunc(X[2], u)
+        uarg = filterInputFunc(X[1], u)
+        dynamics = getDynamicsf(uarg..., dt)
+        α = norm(x′-x, 2)
+        ce = CounterExample(x, α, dynamics, x′, false, isUnsafe)
         push!(counterExamples, ce)
-    end
+    # end
 end
 
 
@@ -121,11 +141,11 @@ function simulateOMPLDubin(x0::Vector{<:Real},
                            execPath::String,
                            pathFilePath::String,
                            omplConfig::Dict{Any, Any},
+                           setOmplConfigFunc::Function=defaultSetOmplConfigFunc,
                            numTrial::Integer=5,
-                           )::Tuple{SampleStatus, StateTraj, InputTraj}
+                           )
 
     inTerminalSet(x) = all(env.termSet.lb .<= x) && all(x .<= env.termSet.ub)
-
     outOfBound(x) = any(x .<= env.workspace.lb) && any(env.workspace.ub .<= x)
     # Ideally, we must convert all obstacles to convex obstacles
     inObstacles(x) = any(map(o->all(o.lb .≤ x) && all(x .≤ o.ub), env.obstacles))
@@ -133,41 +153,42 @@ function simulateOMPLDubin(x0::Vector{<:Real},
     convexObs = filter(d->d["type"]=="Convex", obstacles)
     inUnreachRegion(x) = any(map(o -> all(o["A"]*x+o["b"] .<= 0), convexObs))
 
-    X = [x0]
-    U = []
-    if outOfBound(x0) || inObstacles(x0) || inUnreachRegion(x0)
-        status = TRAJ_UNSAFE
-        return status, X, U
-    end
-
-    # if x0 is out of bound, return TRAJ_UNSAFE
-    Xs = []
-    Us = []
-    costs = []
-    status = TRAJ_INFEASIBLE
-    config = deepcopy(omplConfig)
-    config["start"] = x0
+    simN = omplConfig["numStateDim"]
 
     xT = (env.termSet.lb + env.termSet.ub) / 2
+    config = setOmplConfigFunc(omplConfig, x0, xT)
     xT = xT[1:2]
+
+    if outOfBound(x0) || inObstacles(x0) || inUnreachRegion(x0)
+        status = TRAJ_UNSAFE
+        return status, [config["start"]], [], []
+    end
+
+    Xs = []
+    Us = []
+    Dts = []
+    costs = []
+    status = TRAJ_INFEASIBLE
 
     for iTraj in 1:numTrial
 
-        X = [x0]
+        X = [config["start"]]
         U = []
+        dt = []
         cost = Inf
         outputStr = callOracle(execPath, config)
+        # println(outputStr)
 
         if contains(outputStr, "Found a solution") &&
            !contains(outputStr, "Solution is approximate")
            # Check if the last state is
             data = readdlm(pathFilePath)
             numData = size(data, 1)
-            X = [data[i, 1:N] for i in 1:numData]
-            U = [data[i, N+1:end-1] for i in 1:numData]
+            X = [data[i, 1:simN] for i in 1:numData]
+            U = [data[i, simN+1:end-1] for i in 1:numData]
+            dt = [data[i, end] for i in 1:numData]
             monoDist = all([norm(X[i][1:2]-xT,2) >= norm(X[i+1][1:2]-xT,2) for i in 1:numData-1])
-            # monoDist = norm(X[1][1:2]-xT, 2) >= norm(X[2][1:2]-xT, 2)
-            if inTerminalSet(X[end]) && monoDist
+            if inTerminalSet(X[end][1:N]) && monoDist
                 if contains(outputStr, "Found solution with cost ")
                     r = r"Found solution with cost (\d+\.\d+)"
                     csts = [parse(Float64, m[1]) for m in eachmatch(r, outputStr)]
@@ -181,9 +202,10 @@ function simulateOMPLDubin(x0::Vector{<:Real},
         push!(costs, cost)
         push!(Xs, X)
         push!(Us, U)
+        push!(Dts, dt)
     end
     ind = argmin(costs)
-    return status, Xs[ind], Us[ind]
+    return status, Xs[ind], Us[ind], Dts[ind]
 end
 
 

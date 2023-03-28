@@ -93,8 +93,9 @@ function plot2DCLF(iter, counterExamples, env, params, lfs; regions=nothing, fil
 
     plotEnv(env)
     plotUnreachableRegion(env, regions=regions)
-    x = range(1.1*env.workspace.lb[1], 1.1*env.workspace.ub[1], length=100)
-    y = range(1.1*env.workspace.lb[2], 1.1*env.workspace.ub[2], length=100)
+    dxy = 0.1 * (env.workspace.ub - env.workspace.lb)
+    x = range(env.workspace.lb[1]-dxy[1], env.workspace.ub[1]+dxy[1], length=100)
+    y = range(env.workspace.lb[2]-dxy[2], env.workspace.ub[2]+dxy[2], length=100)
     Vtemp(x_, y_) = clfjl.V([x_, y_], lfs)
     z = @. Vtemp(x', y)
     contour!(x, y, Vtemp, levels=[0], color=:red, style=:dot, linewidth=2, legend=:none)
@@ -103,19 +104,19 @@ function plot2DCLF(iter, counterExamples, env, params, lfs; regions=nothing, fil
     for ce in filter(c -> !c.isUnsafe, counterExamples)
         x = ce.x
         y = ce.y
-        plot!([x[1], y[1]], [x[2], y[2]], arrow=(:open, 1), markershapes=[:circle, :star5], markersize=2, color=:blue)
+        plot!([x[1], y[1]], [x[2], y[2]], arrow=(:open, 0.5), markershapes=[:circle, :star5], markersize=2, color=:blue)
     end
     # ces = reduce(vcat, listOfPoints; init=Vector{Vector{Float64}}())
     # X = map(c -> c.x[1], ces)
     # Y = map(c -> c.x[2], ces)
     # scatter!(X, Y, markersize = 3)
-    scatter!([counterExamples[end].x[1]], [counterExamples[end].x[2]], markersize = 3, color=:black)
+    scatter!([counterExamples[end].x[1]], [counterExamples[end].x[2]], markersize = 3, color=:red)
 
     unsafeCes = filter(c -> c.isUnsafe, counterExamples)
     # XY_ = reduce(vcat, unSafelistOfPoints; init=Vector{Vector{Float64}}())
     X_ = map(c -> c.x[1], unsafeCes)
     Y_ = map(c -> c.x[2], unsafeCes)
-    scatter!(X_, Y_, markersize=2, color=:red)
+    scatter!(X_, Y_, markersize=2, color=:white)
 
     xmin = Float64(env.workspace.lb[1])
     xmax = Float64(env.workspace.ub[1])
@@ -144,11 +145,12 @@ function plot3DCLF(iter, counterExamples, env, params, lfs; regions=nothing, fil
     Nd = params.optDim
     Ns = env.numSpaceDim
 
-    x = range(1.1*env.workspace.lb[1], 1.1*env.workspace.ub[1], length=100)
-    y = range(1.1*env.workspace.lb[2], 1.1*env.workspace.ub[2], length=100)
-    z = range(1.1*env.workspace.lb[3], 1.1*env.workspace.ub[3], length=5)
+    dxy = 0.1 * (env.workspace.ub - env.workspace.lb)
+    x = range(env.workspace.lb[1]-dxy[1], env.workspace.ub[1]+dxy[1], length=100)
+    y = range(env.workspace.lb[2]-dxy[2], env.workspace.ub[2]+dxy[2], length=100)
+    z = range(env.workspace.lb[3]-dxy[3], env.workspace.ub[3]+dxy[3], length=3)
     sumVals = sum(maximum.(map(v->abs.(collect(v)), zip(env.workspace.lb[1:Nd], env.workspace.ub[1:Nd]))))
-    clims = (-sumVals, sumVals)
+    clims = (-0.5*sumVals, 0.5*sumVals)
 
     for z_ in z
         plotEnv(env)
