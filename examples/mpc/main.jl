@@ -107,11 +107,11 @@ end
     #      inputLB=[-0.1, -0.1],
     #      inputUB=[ 0.1,  0.1])
     ## 2D: X=[θ, y] , U=[ω]
-    main(lines=[([pi/12,  0.5], [0., 0.])],
-         initLB=[-pi/12, 0.5],
-         initUB=[ pi/12, 0.6],
-         termLB=[-pi/4, -0.15],
-         termUB=[ pi/4,  0.15],
+    main(lines=[([pi/3,  0.3], [0., 0.])],
+         initLB=[-pi/3, -0.3],
+         initUB=[ pi/3,  0.3],
+         termLB=[-pi/12, -0.3],
+         termUB=[ pi/12,  0.3],
          boundLB=[-pi/2, -1.0],
          boundUB=[ pi/2,  1.0],
          inputLB=[-1],

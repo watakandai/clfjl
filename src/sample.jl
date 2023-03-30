@@ -457,10 +457,9 @@ function simulateSimpleCar(Ad, Bd, x0::Vector{<:Real},
         # Q = spdiagm([0.1, 1])              # Weights for Xs from 0:N-1
         # QN = Q                        # Weights for the terminal state X at N (Xn or xT)
         # R = 100 * speye(nu)
-        Q = spdiagm([0.001, 1])              # Weights for Xs from 0:N-1
+        Q = spdiagm([0.1, 1])              # Weights for Xs from 0:N-1
         QN = Q                        # Weights for the terminal state X at N (Xn or xT)
-        R = 10 * speye(nu)
-
+        R = 1 * speye(nu)
     else
         Q = spdiagm(ones(nx))           # Weights for Xs from 0:N-1
         QN = 10 * Q                          # Weights for the terminal state X at N (Xn or xT)
