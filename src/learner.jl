@@ -24,8 +24,6 @@ function synthesizeCLF(lines::Vector{Tuple{Vector{Float64}, Vector{Float64}}},
     while true
 
         iter += 1
-        params.print && println("Sampling ...")
-        sampleFunc(iter, counterExamples, x, env)
 
         params.print && println("Iter: ", iter, " - ncl: ", length(counterExamples))
         if iter > params.maxIteration

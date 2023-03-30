@@ -88,8 +88,8 @@ function main(;lines::Vector{Tuple{Vector{Float64}, Vector{Float64}}},
         return clfjl.sampleSimpleCar(counterExamples, x0_, env_, Ad, Bd, inputSet; xT=xT)
     end
 
-    # clfjl.synthesizeCLF(lines, params, env, solver, sampleSimpleCar, clfjl.plot2DCLF)
-    clfjl.synthesizeCLF(lines, params, env, solver, sampleSimpleCar, clfjl.plot3DCLF)
+    clfjl.synthesizeCLF(lines, params, env, solver, sampleSimpleCar, clfjl.plot2DCLF)
+    # clfjl.synthesizeCLF(lines, params, env, solver, sampleSimpleCar, clfjl.plot3DCLF)
     # clfjl.synthesizeCLF(lines, params, env, solver, sampleSimpleCar)
 end
 
@@ -107,9 +107,7 @@ end
     #      inputLB=[-0.1, -0.1],
     #      inputUB=[ 0.1,  0.1])
     ## 2D: X=[θ, y] , U=[ω]
-    main(lines=[([-1.1,  0.1,  pi/12], [0.305, 0.295,  0]),
-                ([-1.1, -0.1, -pi/12], [0.305, -0.295, ])],
-         x0=[pi/12, 0.5],
+    main(lines=[([pi/12,  0.5], [0., 0.])],
          initLB=[-pi/12, 0.5],
          initUB=[ pi/12, 0.6],
          termLB=[-pi/4, -0.15],
@@ -118,6 +116,16 @@ end
          boundUB=[ pi/2,  1.0],
          inputLB=[-1],
          inputUB=[ 1])
+    # main(lines=[([-pi/3, -0.3], [0., 0.]),
+    #             ([ pi/3, 0.3], [0., 0.])],
+    #      initLB=[-pi/3, -0.3],
+    #      initUB=[ pi/3,  0.3],
+    #      termLB=[-pi/12, -0.3],
+    #      termUB=[ pi/12,  0.3],
+    #      boundLB=[-pi/2, -3.0],
+    #      boundUB=[ pi/2,  3.0],
+    #      inputLB=[-1],
+    #      inputUB=[ 1])
     ## 3D: X=[x, y, θ], U=[v=1, ω]
     # main(x0=[0., 0.55, pi/12],
     #      initLB=[-0.1, 0.5, -pi/12],
