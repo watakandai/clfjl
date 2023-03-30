@@ -353,7 +353,7 @@ function simulateMPCSet(Ad, Bd, Q, R, QN, x0, xTmin_, xTmax_, xmin, xmax, umin, 
 end
 
 
-function simulateMPC(Ad, Bd, Q, R, QN, x0, xr, xmin, xmax, umin, umax;
+function simulateMPC(Ad, Bd, Q, R, QN, RD, x0, xr, xmin, xmax, umin, umax;
                      numHorizon=10, numStep=100, stopCondition=nothing)
     # Cast MPC problem to a QP: x = (x(0),x(1),...,x(N),u(0),...,u(N-1))
     """
@@ -371,9 +371,18 @@ function simulateMPC(Ad, Bd, Q, R, QN, x0, xr, xmin, xmax, umin, umax;
     x0 = Float64.(x0)
     N = numHorizon
     (nx, nu) = size(Bd)
+    EYE2 = 2*speye(N)
+    EYE2[1, 1] = 1.0
+    EYE2[end, end] = 1.0
+    OFFD = spdiagm(-1 => ones(N - 1), 1 => ones(N - 1))
+    # display(kron(speye(N), R) + kron(EYE2, RD) - kron(OFFD, RD))
 
     # - quadratic objective
-    P = blockdiag(kron(speye(N), Q), QN, kron(speye(N), R))
+    P = blockdiag(
+        kron(speye(N), Q),
+        QN,
+        kron(speye(N), R) + kron(EYE2, RD) - kron(OFFD, RD)
+        )
     # - linear objective
     q = [repeat(-Q * xr, N); -QN * xr; zeros(N*nu)]
 
@@ -460,6 +469,7 @@ function simulateSimpleCar(Ad, Bd, x0::Vector{<:Real},
         Q = spdiagm([0.1, 1])              # Weights for Xs from 0:N-1
         QN = Q                        # Weights for the terminal state X at N (Xn or xT)
         R = 1 * speye(nu)
+        RD = 1 * speye(nu)
     else
         Q = spdiagm(ones(nx))           # Weights for Xs from 0:N-1
         QN = 10 * Q                          # Weights for the terminal state X at N (Xn or xT)
@@ -481,7 +491,7 @@ function simulateSimpleCar(Ad, Bd, x0::Vector{<:Real},
     iter = 1
     while status == TRAJ_INFEASIBLE
         try
-            X, U = simulateMPC(Ad, Bd, Q, R, QN, x0, xT, # termSet.lb, termSet.ub
+            X, U = simulateMPC(Ad, Bd, Q, R, QN, RD, x0, xT, # termSet.lb, termSet.ub
                                bound.lb, bound.ub,
                                inputSet.lb, inputSet.ub;
                                numStep=numStep,
