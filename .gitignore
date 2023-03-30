@@ -30,3 +30,4 @@ path.txt
 
 **/*.png
 **/.DS_Store
+**/*.jld2
