@@ -192,7 +192,7 @@ function simulateOMPLDubin(x0::Vector{<:Real},
         dt = []
         cost = Inf
         outputStr = callOracle(execPath, config)
-        # println(outputStr)
+        println(outputStr)
 
         if contains(outputStr, "Found a solution") &&
            !contains(outputStr, "Solution is approximate")
@@ -243,8 +243,8 @@ function simulateMPCSet(Ad, Bd, Q, R, QN, x0, xTmin_, xTmax_, xmin, xmax, umin, 
     We let xT be in the decision variable, so that we can change the terminal condition,
     and replace the constraint xk-xT with xl for all x in the objective function.
 
-    Let X = x = (x(0),x(1),...,x(N), u(0),...,u(N-1), xl(0),xl(1),...,xl(N),xT(1))
-    size = (N + 1)*nx  + N*nu + (N + 1)*nx + nx
+    Let X = x = (x(0),x(1),...,x(N), u(0),...,u(N-1), xl(0),xl(1),...,xl(N), xT(0), xT(1),...,xT(N))
+    size = (N + 1)*nx  + N*nu + (N + 1)*nx + (N + 1)*nx
 
     Minimize
         ∑{l=0:N-1} xl^T Q xl + xM^T QN xM + ∑{k=0:N-1} uk^T R uk
@@ -263,28 +263,31 @@ function simulateMPCSet(Ad, Bd, Q, R, QN, x0, xTmin_, xTmax_, xmin, xmax, umin, 
     N = numHorizon
     (nx, nu) = size(Bd)
 
-    diff = xTmax_ - xTmin_
-    dt = 0.1 * diff
-    xTmin = xTmin_ + dt
-    xTmax = xTmax_ - dt
+    # diff = xTmax_ .- xTmin_
+    # dt = 0.25 * diff
+    # xTmin = xTmin_ + dt
+    # xTmax = xTmax_ - dt
+    xTmin = xTmin_
+    xTmax = xTmax_
+    println("xTmin = $xTmin, xTmax = $xTmax")
 
     # - quadratic objective
-    P = blockdiag(kron(speye(N+1), spzeros(nx,nx)), kron(speye(N), R), kron(speye(N), Q), QN, spzeros(nx,nx))
+    P = blockdiag(kron(speye(N+1), spzeros(nx,nx)), kron(speye(N), R), kron(speye(N), Q), QN, kron(speye(N+1), spzeros(nx,nx)))
     # - linear objective
     # q = [repeat(-Q * xr, N); -QN * xr; zeros(N*nu)]
-    q = [zeros((N+1)*nx); zeros(N*nu); zeros((N+2)*nx)]
+    q = [zeros((N+1)*nx); zeros(N*nu); zeros(2*(N+1)*nx)]
 
     # - linear dynamics
     Ax = kron(speye(N + 1), -speye(nx)) + kron(spdiagm(-1 => ones(N)), Ad)
     Bu = kron([spzeros(1, N); speye(N)], Bd) # last speye(1) is for xT
-    Cd = spzeros((N+1)*nx, (N+2)*nx) # last spzeros is for xT
+    Cd = spzeros((N+1)*nx, 2*(N+1)*nx) # last spzeros is for xT
     Aeq = [Ax Bu Cd]
 
-    # - linear terminal constraint
-    At = kron(speye(N+1), speye(nx))        # for +xk
+    # - linear terminal constraint x(k) - xl(k) - xT(k) = 0 ∀k=(0,1,...,N)
+    At = kron(speye(N+1), speye(nx))        # for +x
     Bt = spzeros(nx*(N+1), N*nu)            # for u=0
     Ct1 = kron(speye(N+1), -speye(nx))      # for -xl
-    Ct2 = repeat(-speye(nx), N+1)           # for -xT
+    Ct2 = kron(speye(N+1), -speye(nx))      # for -xT
     Aeq2 = [At Bt Ct1 Ct2]
 
     leq = [-x0; zeros(N * nx)]
@@ -293,11 +296,11 @@ function simulateMPCSet(Ad, Bd, Q, R, QN, x0, xTmin_, xTmax_, xmin, xmax, umin, 
     leq2 = zeros((N+1)*nx)
     ueq2 = leq2
     # - input and state constraints
-    Aineq = [blockdiag(kron(speye(N+1), speye(nx)), kron(speye(N), speye(nu))) spzeros((N+1)*nx + N*nu, (N+2)*nx);
-             spzeros(nx, (N+1)*nx + N*nu + (N+1)*nx) speye(nx)]
+    Aineq = [blockdiag(kron(speye(N+1), speye(nx)), kron(speye(N), speye(nu))) spzeros((N+1)*nx + N*nu, 2*(N+1)*nx);
+             spzeros((N+1)*nx, (N+1)*nx + N*nu + (N+1)*nx) kron(speye(N+1), speye(nx))]
     # Aineq = speye((N + 1) * nx + N * nu + nx) # last +nx is for xT
-    lineq = [repeat(xmin, N + 1); repeat(umin, N); xTmin] # last xTmin is for xT
-    uineq = [repeat(xmax, N + 1); repeat(umax, N); xTmax] # last xTmax is for xT
+    lineq = [repeat(xmin, N + 1); repeat(umin, N); repeat(xTmin, N + 1)] # last xTmin is for xT
+    uineq = [repeat(xmax, N + 1); repeat(umax, N); repeat(xTmax, N + 1)] # last xTmax is for xT
     # - OSQP constraints
     A, l, u = [Aeq; Aeq2; Aineq], [leq; leq2; lineq], [ueq; ueq2; uineq]
 
@@ -318,9 +321,8 @@ function simulateMPCSet(Ad, Bd, Q, R, QN, x0, xTmin_, xTmax_, xmin, xmax, umin, 
 
         # Check solver status
         if res.info.status != :Solved
-            # println("Could not Solve!")
-            # println(X, U)
-            return X, U
+            println("Could not Solve!")
+            println(X, U)
             error("OSQP did not solve the problem!")
         end
 
@@ -332,7 +334,7 @@ function simulateMPCSet(Ad, Bd, Q, R, QN, x0, xTmin_, xTmax_, xmin, xmax, umin, 
 
         push!(U, ctrl)
         xNext = Ad * x0 + Bd * ctrl
-        # println(ctrl, ", ", xNext, " ,", stopCondition(xNext), ", ", iStep)
+        # println(ctrl, ", ", xNext, ", ", stopCondition(xNext), ", ", iStep)
 
         push!(X, xNext)
 
@@ -364,6 +366,8 @@ function simulateMPC(Ad, Bd, Q, R, QN, x0, xr, xmin, xmax, umin, umax;
         x0 = \bar{x} (Initial state)
     Refer to https://osqp.org/docs/examples/mpc.html
     """
+
+    println("Solving MPC at x0=$x0, xr=$xr")
     x0 = Float64.(x0)
     N = numHorizon
     (nx, nu) = size(Bd)
@@ -403,6 +407,7 @@ function simulateMPC(Ad, Bd, Q, R, QN, x0, xr, xmin, xmax, umin, umax;
 
         # Check solver status
         if res.info.status != :Solved
+            println("OSQP did not solve the problem!")
             error("OSQP did not solve the problem!")
         end
 
@@ -433,10 +438,10 @@ function simulateSimpleCar(Ad, Bd, x0::Vector{<:Real},
                            inputSet::HyperRectangle;
                            maxIteration::Integer=10,
                            numStep::Integer=100,
-                           numHorizon::Integer=100,
+                           numHorizon::Integer=10;
+                           xT::Vector{<:Real}=[]
                            )::Tuple{SampleStatus, StateTraj, InputTraj}
 
-    xT =  (termSet.lb + termSet.ub) / 2
     (nx, nu) = size(Bd)
     @assert size(Ad) == (nx, nx)
     @assert length(x0) == nx
@@ -446,8 +451,6 @@ function simulateSimpleCar(Ad, Bd, x0::Vector{<:Real},
     @assert length(bound.ub) == nx
     @assert length(inputSet.lb) == nu
     @assert length(inputSet.ub) == nu
-
-    # println("termSet: ", termSet)
 
     # # Objective function
     if length(x0) == 2
@@ -462,7 +465,7 @@ function simulateSimpleCar(Ad, Bd, x0::Vector{<:Real},
     # println(Q, QN, R)
 
     inTerminalSet(x) = all(termSet.lb .<= x) && all(x .<= termSet.ub)
-    outOfBound(x) = any(x .<= bound.lb) && any(bound.ub .<= x)
+    outOfBound(x) = any(x .<= bound.lb) || any(bound.ub .<= x)
     stopCondition(x) = inTerminalSet(x) || outOfBound(x)
 
     status = TRAJ_INFEASIBLE
@@ -479,11 +482,11 @@ function simulateSimpleCar(Ad, Bd, x0::Vector{<:Real},
             #                    stopCondition=stopCondition,
             #                    numHorizon=numHorizon)
             X, U = simulateMPCSet(Ad, Bd, Q, R, QN, x0, termSet.lb, termSet.ub,
-                               bound.lb, bound.ub,
-                               inputSet.lb, inputSet.ub;
-                               numStep=numStep,
-                               stopCondition=stopCondition,
-                               numHorizon=numHorizon)
+                                bound.lb, bound.ub,
+                                inputSet.lb, inputSet.ub;
+                                numStep=numStep,
+                                stopCondition=stopCondition,
+                                numHorizon=numHorizon)
         catch e
             println(e)
             status = TRAJ_UNSAFE
@@ -513,14 +516,16 @@ function sampleSimpleCar(counterExamples::Vector{CounterExample},
                          env::Env,
                          Ad::Matrix{<:Real},
                          Bd::Matrix{<:Real},
-                         inputSet::HyperRectangle)
+                         inputSet::HyperRectangle;
+                         xT::Vector{<:Real}=[])
     numDim = length(x0)
     status, X, U = simulateSimpleCar(sparse(Ad),
                                      sparse(Bd),
                                      x0,
                                      env.termSet,
                                      env.workspace,
-                                     inputSet)
+                                     inputSet;
+                                     xT=xT)
     # Choices if Unsafe
     # 1. Add all data points in the data as unsafe counterexamples
     # 2. Only add last two to unsafe counterexamples
@@ -543,11 +548,6 @@ function sampleSimpleCar(counterExamples::Vector{CounterExample},
     #         push!(counterExamples, ce)
     #     end
 
-    #     b = Bd * U[end-1]
-    #     dynamics = Dynamics(Ad, b, numDim)
-    #     α = norm((X[end]-X[end-1])[1:2], 2)
-    #     ce = CounterExample(X[end-1], α, dynamics, X[end], false, isUnsafe)
-    #     push!(counterExamples, ce)
     # end
     # else
         b = Bd * U[1]
@@ -555,12 +555,6 @@ function sampleSimpleCar(counterExamples::Vector{CounterExample},
         α = norm(X[2]-X[1], 2)
         ce = CounterExample(X[1], α, dynamics, X[2], false, isUnsafe)
         push!(counterExamples, ce)
-
-        # b = Bd * U[end-1]
-        # dynamics = Dynamics(Ad, b, numDim)
-        # α = norm((X[end]-X[end-1])[1:2], 2)
-        # ce = CounterExample(X[end-1], α, dynamics, X[end], false, isUnsafe)
-        # push!(counterExamples, ce)
     # end
 end
 
