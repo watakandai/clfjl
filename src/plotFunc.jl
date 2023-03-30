@@ -181,21 +181,21 @@ function plot3DCLF(iter, counterExamples, env, params, lfs; regions=nothing, fil
     Nd = params.optDim
 
     dxy = 0.1 * (env.workspace.ub - env.workspace.lb)
-    x = range(env.workspace.lb[1]-dxy[1], env.workspace.ub[1]+dxy[1], length=100)
-    y = range(env.workspace.lb[2]-dxy[2], env.workspace.ub[2]+dxy[2], length=100)
-    z = range(env.workspace.lb[3]-dxy[3], env.workspace.ub[3]+dxy[3], length=5)
+    X = range(env.workspace.lb[1]-dxy[1], env.workspace.ub[1]+dxy[1], length=100)
+    Y = range(env.workspace.lb[2]-dxy[2], env.workspace.ub[2]+dxy[2], length=100)
+    Zs = range(env.workspace.lb[3]-dxy[3], env.workspace.ub[3]+dxy[3], length=3)
     sumVals = sum(maximum.(map(v->abs.(collect(v)), zip(env.workspace.lb[1:Nd], env.workspace.ub[1:Nd]))))
-    clims = (-0.5*sumVals, 0.5*sumVals)
+    clims = (-0.25*sumVals, 0.75*sumVals)
 
-     for z_ in z
+    for z_ in Zs
         plotEnv(env)
         plotUnreachableRegion(env, regions=regions)
 
         Vtemp(x_, y_) = clfjl.V([x_, y_, z_], lfs)
-        z = @. Vtemp(x', y)
+        Z = @. Vtemp(X', Y)
 
-        contour!(x, y, Vtemp, levels=[0], color=:red, style=:dot, linewidth=2, legend=:none, clims=clims)
-        contour!(x, y, z, levels=100, color=:turbo, colorbar=true, clims=clims)
+        contour!(X, Y, Vtemp, levels=[0], color=:red, style=:dot, linewidth=2, legend=:none, clims=clims)
+        contour!(X, Y, Z, levels=100, color=:turbo, colorbar=true, clims=clims)
 
         for ce in filter(c -> !c.isUnsafe, counterExamples)
             x = ce.x
@@ -207,11 +207,7 @@ function plot3DCLF(iter, counterExamples, env, params, lfs; regions=nothing, fil
         unsafeCes = filter(c -> c.isUnsafe, counterExamples)
         X_ = map(c -> c.x[1], unsafeCes)
         Y_ = map(c -> c.x[2], unsafeCes)
-        scatter!(X_, Y_, markersize=2, color=:green, shape=:xcross)
-        # xmin = Float64(env.workspace.lb[1])
-        # xmax = Float64(env.workspace.ub[1])
-        # ymin = Float64(env.workspace.lb[2])
-        # ymax = Float64(env.workspace.ub[2])
+        scatter!(X_, Y_, markersize=2, color=:black, shape=:xcross)
         # del, vor, _ = deldir(X, Y, [xmin, xmax, ymin, ymax], 1e-10)
         # # Dx, Dy = edges(del)
         # Vx, Vy = edges(vor)

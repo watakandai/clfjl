@@ -10,7 +10,7 @@ include("../../src/clfjl.jl")
 const GUROBI_ENV = Gurobi.Env()
 
 
-function main(;x0::Vector{<:Real},
+function main(;lines::Vector{Tuple{Vector{Float64}, Vector{Float64}}},
                initLB::Union{Vector{<:Real}, <:Real},
                initUB::Union{Vector{<:Real}, <:Real},
                termLB::Union{Vector{<:Real}, <:Real},
@@ -20,6 +20,7 @@ function main(;x0::Vector{<:Real},
                inputLB::Union{Vector{<:Real}, <:Real},
                inputUB::Union{Vector{<:Real}, <:Real})
 
+    x0 = lines[1][1]
     N = length(x0)
 
     # Constraints
@@ -62,8 +63,9 @@ function main(;x0::Vector{<:Real},
 
     "Synthesize Control Lyapunov functions for the given env"
     function sampleSimpleCar(counterExamples::Vector{clfjl.CounterExample},
-                             x0::Vector{<:Real},
-                             env::clfjl.Env)
+                             x0_::Vector{<:Real},
+                             env_::clfjl.Env;
+                             xT::Vector{<:Real}=[])
             # Ad = [1 0 1 0;
             #       0 1 1/2 1/2;
             #       0 0 1 0;
@@ -83,12 +85,12 @@ function main(;x0::Vector{<:Real},
             # Bd = [velocity 0;
             #       0 0;
             #       0 1;]
-        return clfjl.sampleSimpleCar(counterExamples, x0, env, Ad, Bd, inputSet)
+        return clfjl.sampleSimpleCar(counterExamples, x0_, env_, Ad, Bd, inputSet; xT=xT)
     end
 
-    clfjl.synthesizeCLF(x0, params, env, solver, sampleSimpleCar, clfjl.plot2DCLF)
-    # clfjl.synthesizeCLF(x0, params, env, solver, sampleSimpleCar, clfjl.plot3DCLF)
-    # clfjl.synthesizeCLF(x0, params, env, solver, sampleSimpleCar)
+    # clfjl.synthesizeCLF(lines, params, env, solver, sampleSimpleCar, clfjl.plot2DCLF)
+    clfjl.synthesizeCLF(lines, params, env, solver, sampleSimpleCar, clfjl.plot3DCLF)
+    # clfjl.synthesizeCLF(lines, params, env, solver, sampleSimpleCar)
 end
 
 
@@ -105,7 +107,9 @@ end
     #      inputLB=[-0.1, -0.1],
     #      inputUB=[ 0.1,  0.1])
     ## 2D: X=[θ, y] , U=[ω]
-    main(x0=[pi/12, 0.5],
+    main(lines=[([-1.1,  0.1,  pi/12], [0.305, 0.295,  0]),
+                ([-1.1, -0.1, -pi/12], [0.305, -0.295, ])],
+         x0=[pi/12, 0.5],
          initLB=[-pi/12, 0.5],
          initUB=[ pi/12, 0.6],
          termLB=[-pi/4, -0.15],

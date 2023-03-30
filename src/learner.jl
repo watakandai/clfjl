@@ -6,15 +6,19 @@ using JLD2
 end
 
 "Synthesize Polyhedral Control Lyapunov functions through Sampling Counter Examples"
-function synthesizeCLF(x0::Vector{<:Real},
+function synthesizeCLF(lines::Vector{Tuple{Vector{Float64}, Vector{Float64}}},
                        params::Parameters,
                        env::Env,
                        solver,
                        sampleFunc,
                        plotFunc=(args...)->nothing)::Tuple{StatusCode, Vector}
     counterExamples::Vector{CounterExample} = []
-    x = x0
     lfs::LyapunovFunctions = []
+
+    for (x0, xT) in lines
+        println("Sampling ...")
+        sampleFunc(counterExamples, x0, env; xT=xT)
+    end
 
     iter::Integer = 0
     while true
@@ -52,7 +56,7 @@ function synthesizeCLF(x0::Vector{<:Real},
                                                     env,
                                                     solver,
                                                     params.optDim,
-                                                    params.thresholdLyapunovGapForVerifier)
+                                                   params.thresholdLyapunovGapForVerifier)
 
         params.print && println("|-- CE: ", x, ", ", verLyapunovGap)
         if verLyapunovGap < params.thresholdLyapunovGapForVerifier
@@ -63,6 +67,8 @@ function synthesizeCLF(x0::Vector{<:Real},
             return CONTROLLER_FOUND, lfs
         end
 
+        params.print && println("Sampling ...")
+        sampleFunc(counterExamples, x, env; xT=Vector{Float64}())
     end
     iter = Inf
     plotFunc(iter, counterExamples, env, params, lfs)
