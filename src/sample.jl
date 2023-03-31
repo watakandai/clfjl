@@ -546,11 +546,12 @@ function sampleSimpleCar(counterExamples::Vector{CounterExample},
     # 1. Add all data points in the data as unsafe counterexamples
     # 2. Only add last two to unsafe counterexamples
     isUnsafe = status != TRAJ_FOUND
+    index = maximum(ce -> ce.index, counterExamples, init=0) + 1
 
     if length(X) == 1
         dynamics = Dynamics(Ad, Bd[:,1], numDim)
         α = 1
-        ce = CounterExample(X[1], α, dynamics, X[1], false, isUnsafe)
+        ce = CounterExample(X[1], α, dynamics, X[1], false, isUnsafe, index)
         push!(counterExamples, ce)
         return
     end
@@ -570,7 +571,7 @@ function sampleSimpleCar(counterExamples::Vector{CounterExample},
         dynamics = Dynamics(Ad, b, numDim)
         # α = norm(X[2]-X[1], 2)
         α = norm(X[1], 2)
-        ce = CounterExample(X[1], α, dynamics, X[2], false, isUnsafe)
+        ce = CounterExample(X[1], α, dynamics, X[2], false, isUnsafe, index)
         push!(counterExamples, ce)
     # end
 end

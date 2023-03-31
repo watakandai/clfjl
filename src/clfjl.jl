@@ -59,6 +59,7 @@ mutable struct CounterExample
     y::Vector{<:Real}
     isTerminal::Bool
     isUnsafe::Bool
+    index::Int
 end
 
 

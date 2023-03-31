@@ -45,7 +45,7 @@ function main(;lines::Vector{Tuple{Vector{Float64}, Vector{Float64}}},
         maxLyapunovGapForGenerator=10,
         maxLyapunovGapForVerifier=10,
         thresholdLyapunovGapForGenerator=1e-12,
-        thresholdLyapunovGapForVerifier=0,
+        thresholdLyapunovGapForVerifier=-0.01,
         print=true,
         padding=true
     )
@@ -92,7 +92,6 @@ function main(;lines::Vector{Tuple{Vector{Float64}, Vector{Float64}}},
     # clfjl.synthesizeCLF(lines, params, env, solver, sampleSimpleCar, clfjl.plot3DCLF)
     # clfjl.synthesizeCLF(lines, params, env, solver, sampleSimpleCar)
 end
-
 
 # ------------------------------ Main ------------------------------ #
 @suppress_err begin # Plotting gives warnings, so I added the supress command.

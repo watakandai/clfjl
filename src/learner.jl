@@ -12,14 +12,14 @@ function synthesizeCLF(lines::Vector{Tuple{Vector{Float64}, Vector{Float64}}},
                        solver,
                        sampleFunc,
                        plotFunc=(args...)->nothing,
-                       counterExamples::Vector{CounterExample} = [])::Tuple{StatusCode, Vector}
+                       counterExamples::Vector{CounterExample} = CounterExample[]
+                       )::Tuple{StatusCode, Vector}
 
     lfs::LyapunovFunctions = []
     for (x0, xT) in lines
         println("Sampling ...")
         sampleFunc(counterExamples, x0, env; xT=xT)
     end
-
     iter::Integer = 0
     while true
 
@@ -56,7 +56,9 @@ function synthesizeCLF(lines::Vector{Tuple{Vector{Float64}, Vector{Float64}}},
                                                     params.optDim,
                                                    params.thresholdLyapunovGapForVerifier)
 
-        params.print && println("|-- CE: ", x, ", ", verLyapunovGap)
+        params.print && println(
+            "|-- CE: ", x, ", ", verLyapunovGap, ", ", params.thresholdLyapunovGapForVerifier
+        )
         if verLyapunovGap < params.thresholdLyapunovGapForVerifier
             println("Valid controller: terminated")
             @save joinpath(params.lfsFileDir, "learnedCLFs.jld2") lfs counterExamples env
@@ -64,6 +66,8 @@ function synthesizeCLF(lines::Vector{Tuple{Vector{Float64}, Vector{Float64}}},
             plotTrajectories(trajectories, lfs, env; imgFileDir=params.imgFileDir)
             return CONTROLLER_FOUND, lfs
         end
+
+        # error("Should not reach here in 3D")
 
         params.print && println("Sampling ...")
         sampleFunc(counterExamples, x, env; xT=Vector{Float64}())

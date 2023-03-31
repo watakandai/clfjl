@@ -22,12 +22,10 @@ function main(;lines::Vector{Tuple{Vector{Float64}, Vector{Float64}}},
                inputUB::Union{Vector{<:Real}, <:Real})
 
     # We only need the working counterexamples from 2D!
-    @load  "examples/mpc/learnedCLFs2D.jld2" lfs counterExamples env
+    @load "examples/mpc/learnedCLFs2D.jld2" lfs counterExamples env
     N = 3; v = 0.1;
-    # Xs = [0., 100]
-    # Xs = [0., 10.,20.]
-    Xs = collect(0:0.1:10.)
-    counterExamplesFor3D::Vector{clfjl.CounterExample} = []
+    Xs = [0., 20., 40.]
+    counterExamplesFor3D::Vector{clfjl.CounterExample} = clfjl.CounterExample[]
     for ce in counterExamples
         # if ce.isUnsafe
         #     continue
@@ -43,10 +41,12 @@ function main(;lines::Vector{Tuple{Vector{Float64}, Vector{Float64}}},
             dynamics = clfjl.Dynamics(A, b, N)
             isTerminal = ce.isTerminal
             isUnsafe = ce.isUnsafe
-            if x >= 10.0
+            if x > 19.0
                 isUnsafe = true
             end
-            counterExampleFor3D = clfjl.CounterExample(currX, α, dynamics, nextX, isTerminal, isUnsafe)
+            counterExampleFor3D = clfjl.CounterExample(
+                currX, α, dynamics, nextX, isTerminal, isUnsafe, ce.index
+            )
             push!(counterExamplesFor3D, counterExampleFor3D)
             # println("$currX -> $nextX")
         end
@@ -62,8 +62,6 @@ function main(;lines::Vector{Tuple{Vector{Float64}, Vector{Float64}}},
     # scatter!(X..., color=:blue)
     # scatter!(Y..., color=:green)
     display(scatter!())
-
-    # @assert false
 
     # Constraints
     initLBs = isa(initLB, Vector{<:Real}) ? initLB : initLB.*ones(N)
@@ -172,10 +170,10 @@ end
     main(lines=Vector{Tuple{Vector{Float64}, Vector{Float64}}}(),
          initLB=[-pi/3, -0.3, 0.0],
          initUB=[ pi/3,  0.3, 0.0],
-         termLB=[-pi/12, -0.3, 0.0],
-         termUB=[ pi/12,  0.3, 20.0],
-         boundLB=[-pi/2, -1.0, -20.0],
-         boundUB=[ pi/2,  1.0,  20.0],
+         termLB=[-pi/12, -0.3, -300.0],
+         termUB=[ pi/12,  0.3,  300.0],
+         boundLB=[-pi/2, -1.0,   0.0],
+         boundUB=[ pi/2,  1.0,  200.0],
          inputLB=[1.0, -pi/12],
          inputUB=[1.0,  pi/12])
 end
