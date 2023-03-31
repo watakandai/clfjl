@@ -59,8 +59,18 @@ mutable struct CounterExample
     y::Vector{<:Real}
     isTerminal::Bool
     isUnsafe::Bool
+    ith::Integer
 end
 
+# mutable struct CounterExampleWithIndex
+#     x::Vector{<:Real}
+#     α::Real
+#     dynamics::Dynamics
+#     y::Vector{<:Real}
+#     isTerminal::Bool
+#     isUnsafe::Bool
+#     ith
+# end
 
 struct LyapunovFunction
     a::Vector{<:Real}

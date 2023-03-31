@@ -458,8 +458,8 @@ function simulateSimpleCar(Ad, Bd, x0::Vector{<:Real},
     @assert length(termSet.ub) == nx
     @assert length(bound.lb) == nx
     @assert length(bound.ub) == nx
-    @assert length(inputSet.lb) == nu
-    @assert length(inputSet.ub) == nu
+    # @assert length(inputSet.lb) == nu
+    # @assert length(inputSet.ub) == nu
 
     # # Objective function
     if length(x0) == 2
@@ -471,9 +471,10 @@ function simulateSimpleCar(Ad, Bd, x0::Vector{<:Real},
         R = 1 * speye(nu)
         RD = 1 * speye(nu)
     else
-        Q = spdiagm(ones(nx))           # Weights for Xs from 0:N-1
-        QN = 10 * Q                          # Weights for the terminal state X at N (Xn or xT)
-        R = 10 * speye(nu)
+        Q = spdiagm([10, 1, 1])           # Weights for Xs from 0:N-1
+        QN = 1 * Q                          # Weights for the terminal state X at N (Xn or xT)
+        R = 1 * speye(nu)
+        RD = 1 * speye(nu)
     end
     # println(Q, QN, R)
     if length(xT) == 0
@@ -547,31 +548,37 @@ function sampleSimpleCar(counterExamples::Vector{CounterExample},
     # 2. Only add last two to unsafe counterexamples
     isUnsafe = status != TRAJ_FOUND
 
+    if length(counterExamples) == 0
+        ith = 1
+    else
+        ith = counterExamples[end].ith + 1
+    end
+
     if length(X) == 1
         dynamics = Dynamics(Ad, Bd[:,1], numDim)
         α = 1
-        ce = CounterExample(X[1], α, dynamics, X[1], false, isUnsafe)
+        ce = CounterExample(X[1], α, dynamics, X[1], false, isUnsafe, ith)
         push!(counterExamples, ce)
         return
     end
 
     # if length(counterExamples) == 0
-    #     for i in 1:length(X)-1
-    #         b = Bd * U[i]
-    #         dynamics = Dynamics(Ad, b, numDim)
-    #         α = norm(X[i+1]-X[i], 2)
-    #         ce = CounterExample(X[i], α, dynamics, X[i+1], false, isUnsafe)
-    #         push!(counterExamples, ce)
-    #     end
+        for i in 1:length(X)-1
+            b = Bd * U[i]
+            dynamics = Dynamics(Ad, b, numDim)
+            α = norm(X[i+1]-X[i], 2)
+            ce = CounterExample(X[i], α, dynamics, X[i+1], false, isUnsafe, ith)
+            push!(counterExamples, ce)
+        end
 
     # end
     # else
-        b = Bd * U[1]
-        dynamics = Dynamics(Ad, b, numDim)
-        # α = norm(X[2]-X[1], 2)
-        α = norm(X[1], 2)
-        ce = CounterExample(X[1], α, dynamics, X[2], false, isUnsafe)
-        push!(counterExamples, ce)
+        # b = Bd * U[1]
+        # dynamics = Dynamics(Ad, b, numDim)
+        # # α = norm(X[2]-X[1], 2)
+        # α = norm(X[1], 2)
+        # ce = CounterExample(X[1], α, dynamics, X[2], false, isUnsafe, ith)
+        # push!(counterExamples, ce)
     # end
 end
 

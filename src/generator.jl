@@ -10,8 +10,11 @@ function generateCandidateCLF(counterExamples::Vector{CounterExample},
     λb, lfsBounds = addBoundaryLFs(model, env, N)
     λo, lfsObstacles = addObstacleLFs(model, env, N)
 
+    ith = counterExamples[end].ith
+    # lfExamples = [JuMPLyapunovFunction(@variable(model, [1:N], lower_bound=-1, upper_bound=1),
+    #                                    @variable(model)) for _ in counterExamples]
     lfExamples = [JuMPLyapunovFunction(@variable(model, [1:N], lower_bound=-1, upper_bound=1),
-                                       @variable(model)) for _ in counterExamples]
+                                       @variable(model)) for _ in 1:ith]
     gap = @variable(model, lower_bound=0,
                            upper_bound=maxLyapunovGapForGenerator)
     initBounds = map(p -> collect(p), zip(env.initSet.lb, env.initSet.ub))
@@ -27,7 +30,9 @@ function generateCandidateCLF(counterExamples::Vector{CounterExample},
     end
 
     # Now, we want ot ensure that Lyapunov Functions decreases at each step.
-    for (lfx, counterExample) in zip(lfExamples, counterExamples)
+    for counterExample in counterExamples
+        ith = counterExample.ith
+        lfx = lfs[ith]
 
         x = counterExample.x
         y = counterExample.y

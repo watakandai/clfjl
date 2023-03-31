@@ -19,51 +19,8 @@ function main(;lines::Vector{Tuple{Vector{Float64}, Vector{Float64}}},
                boundLB::Union{Vector{<:Real}, <:Real},
                boundUB::Union{Vector{<:Real}, <:Real},
                inputLB::Union{Vector{<:Real}, <:Real},
-               inputUB::Union{Vector{<:Real}, <:Real})
-
-    # We only need the working counterexamples from 2D!
-    @load  "examples/mpc/learnedCLFs2D.jld2" lfs counterExamples env
-    N = 3; v = 0.1;
-    # Xs = [0., 100]
-    # Xs = [0., 10.,20.]
-    Xs = collect(0:0.1:10.)
-    counterExamplesFor3D::Vector{clfjl.CounterExample} = []
-    for ce in counterExamples
-        # if ce.isUnsafe
-        #     continue
-        # end
-        for x in Xs
-            # x=[θ,y] -> x=[θ,y,x]
-            currX = vcat(ce.x, [x])
-            nextX = vcat(ce.y, [x + v])
-            α = norm(ce.x, 2)
-            A = [ce.dynamics.A zeros(2);
-                 zeros(2)' 1]               # add x+v to the dynamics
-            b = [ce.dynamics.b; v]          # add x+v to the dynamics
-            dynamics = clfjl.Dynamics(A, b, N)
-            isTerminal = ce.isTerminal
-            isUnsafe = ce.isUnsafe
-            if x >= 10.0
-                isUnsafe = true
-            end
-            counterExampleFor3D = clfjl.CounterExample(currX, α, dynamics, nextX, isTerminal, isUnsafe)
-            push!(counterExamplesFor3D, counterExampleFor3D)
-            # println("$currX -> $nextX")
-        end
-    end
-
-    X = [map(c->c.x[i], filter(c->c.isUnsafe, counterExamplesFor3D)) for i = 1:3]
-    scatter(X..., color=:red)
-    X = [map(c->c.x[i], filter(c->!c.isUnsafe, counterExamplesFor3D)) for i = 1:3]
-    Y = [map(c->c.y[i], filter(c->!c.isUnsafe, counterExamplesFor3D)) for i = 1:3]
-    for c in filter(c->!c.isUnsafe, counterExamplesFor3D)
-        plot!([[c.x[i], c.y[i]] for i in 1:3]..., arrow=(:closed, 5), markershapes=[:circle, :star5], markersize=3, color=:blue)
-    end
-    # scatter!(X..., color=:blue)
-    # scatter!(Y..., color=:green)
-    display(scatter!())
-
-    # @assert false
+               inputUB::Union{Vector{<:Real}, <:Real},
+               N::Integer)
 
     # Constraints
     initLBs = isa(initLB, Vector{<:Real}) ? initLB : initLB.*ones(N)
@@ -108,30 +65,62 @@ function main(;lines::Vector{Tuple{Vector{Float64}, Vector{Float64}}},
                              x0_::Vector{<:Real},
                              env_::clfjl.Env;
                              xT::Vector{<:Real}=[])
-            # Ad = [1 0 1 0;
-            #       0 1 1/2 1/2;
-            #       0 0 1 0;
-            #       0 0 0 1;]
-            # Bd = [0 0;
-            #       0 0;
-            #       1 0;
-            #       0 1]
-            velocity = 0.1
-            # Ad = [1 0;
-            #       velocity 1]
-            # Bd = [1, 0][:, :]       # [:,:] converts vec to matrix
-            # X = [θ, y, x], U = [v=1, ω]
-            Ad = [1 0 0;            # θ' = θ + ω
-                  0 1 velocity;     # y' = y + vθ
-                  0 0 1;]           # x' = x + v
-            Bd = [0 1;
-                  0 0;
-                  velocity 0;]
-        return clfjl.sampleSimpleCar(counterExamples, x0_, env_, Ad, Bd, inputSet; xT=xT)
+        # Ad = [1 0 1 0;
+        #       0 1 1/2 1/2;
+        #       0 0 1 0;
+        #       0 0 0 1;]
+        # Bd = [0 0;
+        #       0 0;
+        #       1 0;
+        #       0 1]
+        velocity = 0.1
+        Ad = [1 0;
+              velocity 1]
+        Bd = [1, 0][:, :]       # [:,:] converts vec to matrix
+        # X = [θ, y, x], U = [v=1, ω]
+        # Ad = [1 0 0;            # θ' = θ + ω
+        #       0 1 velocity;     # y' = y + vθ
+        #       0 0 1;]           # x' = x + v
+        # Bd = [0 1;
+        #       0 0;
+        #       velocity 0;]
+        termSet = clfjl.HyperRectangle(env_.termSet.lb[1:2], env_.termSet.ub[1:2])
+        workspace = clfjl.HyperRectangle(env_.workspace.lb[1:2], env_.workspace.ub[1:2])
+        inputSet_ = clfjl.HyperRectangle([inputSet.lb[2]], [inputSet.ub[2]])
+        env__::clfjl.Env = clfjl.Env(numStateDim=N,
+                                    numSpaceDim=N,
+                                    initSet=initSet,
+                                    termSet=termSet,
+                                    workspace=workspace,
+                                    obstacles=[])
+        if length(xT) != 0
+            xT_ = xT[1:2]
+        else
+            xT_ = xT
+        end
+
+        println("x0=$(x0_), xT=$(xT)")
+        clfjl.sampleSimpleCar(counterExamples, x0_[1:2], env__, Ad, Bd, inputSet_; xT=xT_)
+        recentIth = counterExamples[end].ith
+        filtCes = filter(c->c.ith == recentIth, counterExamples)
+        x0 = x0_[3]
+        # println(filtCes[1].x, ", ", x0_[3])
+        for i in 1:length(filtCes)
+            filtCes[i].x = vcat(filtCes[i].x, [x0])
+            filtCes[i].y = vcat(filtCes[i].y, [x0+velocity])
+            A = []
+            b = []
+            A = [filtCes[i].dynamics.A zeros(2);
+                 zeros(2)' 1]               # add x+v to the dynamics
+            b = [filtCes[i].dynamics.b; velocity]          # add x+v to the dynamics
+            filtCes[i].dynamics = clfjl.Dynamics(A, b, 3)
+            # println("x=$(filtCes[i].x), y=$(filtCes[i].y)")
+            x0 += velocity
+        end
     end
 
     # clfjl.synthesizeCLF(lines, params, env, solver, sampleSimpleCar, clfjl.plot2DCLF)
-    clfjl.synthesizeCLF(lines, params, env, solver, sampleSimpleCar, clfjl.plot3DCLF, counterExamplesFor3D)
+    clfjl.synthesizeCLF(lines, params, env, solver, sampleSimpleCar, clfjl.plot3DCLF)
     # clfjl.synthesizeCLF(lines, params, env, solver, sampleSimpleCar)
 end
 
@@ -157,7 +146,8 @@ end
     #      boundLB=[-pi/2, -1.0],
     #      boundUB=[ pi/2,  1.0],
     #      inputLB=[-1],
-    #      inputUB=[ 1])
+    #      inputUB=[ 1],
+    #      N=2)
     # main(lines=[([-pi/3, -0.3], [0., 0.]),
     #             ([ pi/3, 0.3], [0., 0.])],
     #      initLB=[-pi/3, -0.3],
@@ -167,16 +157,19 @@ end
     #      boundLB=[-pi/2, -3.0],
     #      boundUB=[ pi/2,  3.0],
     #      inputLB=[-1],
-    #      inputUB=[ 1])
+    #      inputUB=[ 1],
+    #      N=2)
     ## 3D: X=[θ, y, x], U=[v=1, ω]
-    main(lines=Vector{Tuple{Vector{Float64}, Vector{Float64}}}(),
+    main(lines=[([ pi/3,  0.3, 0.0], [0., 0., 0.]),
+                ([-pi/3, -0.3, 0.0], [0., 0., 0.])],
          initLB=[-pi/3, -0.3, 0.0],
          initUB=[ pi/3,  0.3, 0.0],
          termLB=[-pi/12, -0.3, 0.0],
          termUB=[ pi/12,  0.3, 20.0],
          boundLB=[-pi/2, -1.0, -20.0],
          boundUB=[ pi/2,  1.0,  20.0],
-         inputLB=[1.0, -pi/12],
-         inputUB=[1.0,  pi/12])
+         inputLB=[1.0, -1],
+         inputUB=[1.0,  1],
+         N=3)
 end
 # ------------------------------------------------------------------ #

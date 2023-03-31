@@ -12,7 +12,7 @@ function synthesizeCLF(lines::Vector{Tuple{Vector{Float64}, Vector{Float64}}},
                        solver,
                        sampleFunc,
                        plotFunc=(args...)->nothing,
-                       counterExamples::Vector{CounterExample} = [])::Tuple{StatusCode, Vector}
+                       counterExamples::Vector{CounterExample} = CounterExample[])::Tuple{StatusCode, Vector}
 
     lfs::LyapunovFunctions = []
     for (x0, xT) in lines
