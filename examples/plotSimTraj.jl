@@ -27,9 +27,9 @@ N = length(env.workspace.lb)
 x0 = env.initSet.ub
 
 @suppress_err begin # Plotting gives warnings, so I added the supress command.
-    newEnv = deepcopy(env)
-    newEnv.workspace.lb[1:N] = [-1.0, -0.3]
-    newEnv.workspace.ub[1:N] = [ 1.0, 1.0]
+    # newEnv = deepcopy(env)
+    # newEnv.workspace.lb[1:N] = [-1.0, -0.3]
+    # newEnv.workspace.ub[1:N] = [ 1.0, 1.0]
     trajectory = clfjl.simulateWithCLFs(x0, lfs, counterExamples, env; numStep=100, withVoronoiControl=true)
     clfjl.plotTrajectories([trajectory], lfs, newEnv; imgFileDir=pwd(), filename="withVoronoiControl")
     trajectory = clfjl.simulateWithCLFs(x0, lfs, counterExamples, env; numStep=100, withVoronoiControl=false)

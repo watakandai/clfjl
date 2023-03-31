@@ -86,7 +86,6 @@ function main(;lines::Vector{Tuple{Vector{Float64}, Vector{Float64}}},
             #       0 0;
             #       0 1;]
 
-            println("x0:$(x0_), xT:$(xT)")
         return clfjl.sampleSimpleCar(counterExamples, x0_, env_, Ad, Bd, inputSet; xT=xT)
     end
 

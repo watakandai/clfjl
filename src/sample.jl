@@ -161,7 +161,7 @@ function simulateOMPLDubin(x0::Vector{<:Real},
                            )
 
     inTerminalSet(x) = all(env.termSet.lb .<= x) && all(x .<= env.termSet.ub)
-    outOfBound(x) = any(x .< env.workspace.lb) && any(env.workspace.ub .< x)
+    outOfBound(x) = any(x .< env.workspace.lb) || any(env.workspace.ub .< x)
     # Ideally, we must convert all obstacles to convex obstacles
     inObstacles(x) = any(map(o->all(o.lb .≤ x) && all(x .≤ o.ub), env.obstacles))
     obstacles = "obstacles" in keys(omplConfig) ? omplConfig["obstacles"] : []
@@ -482,7 +482,7 @@ function simulateSimpleCar(Ad, Bd, x0::Vector{<:Real},
     end
 
     inTerminalSet(x) = all(termSet.lb .<= x) && all(x .<= termSet.ub)
-    outOfBound(x) = any(x .<= bound.lb) || any(bound.ub .<= x)
+    outOfBound(x) = any(x .< bound.lb) || any(bound.ub .< x)
     stopCondition(x) = inTerminalSet(x) || outOfBound(x)
 
     status = TRAJ_INFEASIBLE
@@ -563,22 +563,22 @@ function sampleSimpleCar(counterExamples::Vector{CounterExample},
     end
 
     # if length(counterExamples) == 0
-        for i in 1:length(X)-1
-            b = Bd * U[i]
-            dynamics = Dynamics(Ad, b, numDim)
-            α = norm(X[i+1]-X[i], 2)
-            ce = CounterExample(X[i], α, dynamics, X[i+1], false, isUnsafe, ith)
-            push!(counterExamples, ce)
-        end
+        # for i in 1:length(X)-1
+        #     b = Bd * U[i]
+        #     dynamics = Dynamics(Ad, b, numDim)
+        #     α = norm(X[i+1]-X[i], 2)
+        #     ce = CounterExample(X[i], α, dynamics, X[i+1], false, isUnsafe, ith)
+        #     push!(counterExamples, ce)
+        # end
 
     # end
     # else
-        # b = Bd * U[1]
-        # dynamics = Dynamics(Ad, b, numDim)
-        # # α = norm(X[2]-X[1], 2)
-        # α = norm(X[1], 2)
-        # ce = CounterExample(X[1], α, dynamics, X[2], false, isUnsafe, ith)
-        # push!(counterExamples, ce)
+        b = Bd * U[1]
+        dynamics = Dynamics(Ad, b, numDim)
+        # α = norm(X[2]-X[1], 2)
+        α = norm(X[1], 2)
+        ce = CounterExample(X[1], α, dynamics, X[2], false, isUnsafe, ith)
+        push!(counterExamples, ce)
     # end
 end
 
@@ -617,7 +617,7 @@ function simulateStabilityExample(x0, termSet, bound;
          0 -1/2]
     A′ = A + K
     inTerminalSet(x) = all(termSet.lb .<= x) && all(x .<= termSet.ub)
-    outOfBound(x) = any(x .<= bound.lb) && any(bound.ub .<= x)
+    outOfBound(x) = any(x .< bound.lb) || any(bound.ub .< x)
     stopCondition(x) = inTerminalSet(x) || outOfBound(x)
 
     status = TRAJ_INFEASIBLE
@@ -698,3 +698,251 @@ function StabilityExample(;x=[1., 1.],
     savefig(joinpath(@__DIR__, "StabilityExample.png"))
 end
 # StabilityExample(x=[-1., 1.], boundLB=-1.1, boundUB=1.1)
+
+
+
+function runCloseLoop(A, b, x0;
+    numStep=100, stopCondition=nothing)::Tuple{StateTraj, InputTraj}
+end
+
+
+function simulateBuckConverter(x0, termSet, bound;
+                               maxIteration::Integer=10,
+                               numStep::Integer=100,
+                            #    k1::Float64=2.42591,
+                               k1::Float64=1.5,
+                               k2::Float64=1.,
+                               xT::Vector{Float64}=[0., 0.])
+    """
+    DC-DC Buck Converter Model from
+    https://files.cercomp.ufg.br/weby/up/762/o/Slides-Seminario.pdf?1658240138
+    """
+    inTerminalSet(x) = all(termSet.lb .<= x) && all(x .<= termSet.ub)
+    outOfBound(x) = any(x .< bound.lb) || any(bound.ub .< x)
+    stopCondition(x) = inTerminalSet(x) || outOfBound(x)
+
+    dt = 0.1
+    A = [0 1;
+         -1 -1]
+    b = [0, 1][:,:]
+    Ad = A*dt + I
+    Bd = b*dt
+
+    h(x) = k1*(x[1] − xT[1]) + k2*(x[2] - xT[2])
+    controlFunc(x) = h(x) > 0 ? [0] : [1]
+
+    status = TRAJ_INFEASIBLE
+    X::Vector{Vector{<:Real}} = [x0]
+    As::Vector{Matrix{<:Real}} = []
+    bs::Vector{Vector{<:Real}} = []
+
+    iter = 1
+    while status == TRAJ_INFEASIBLE
+        # Initialize all
+        x = x0
+        X = [x0]
+        As = []
+        bs = []
+        # Run the simulatio n loop
+        for _ in 1:numStep
+            xNext = Ad*x + Bd*u
+            push!(X, xNext)
+            push!(As, Ad)
+            push!(bs, Bd*u)
+            if inTerminalSet(X[end])
+                status = TRAJ_FOUND
+                break
+            elseif outOfBound(X[end])
+                status = TRAJ_UNSAFE
+                break
+            end
+            x = xNext
+        end
+
+        iter += 1
+        numStep *= 2        # It's likely that it couldn't reach the terminal set. Increase #steps
+        if iter >= maxIteration
+            status = TRAJ_MAX_ITER_REACHED
+            break
+        end
+    end
+    return status, X, As, bs
+end
+
+
+function simulateSwitchStable(x0, termSet, bound;
+                              maxIteration::Integer=10,
+                              numStep::Integer=100,
+                              xT=nothing)
+    """
+    DC-DC Buck Converter Model from
+    https://lucris.lub.lu.se/ws/portalfiles/portal/4673551/8571461.pdf
+    """
+    inTerminalSet(x) = all(termSet.lb .<= x) && all(x .<= termSet.ub)
+    outOfBound(x) = any(x .< bound.lb) || any(bound.ub .< x)
+    stopCondition(x) = inTerminalSet(x) || outOfBound(x)
+
+    controlSwitch(x) = x[1]*x[2] ≥ 0 ? true : false
+    dt = 0.1
+    A1 = [-0.1  1.0;
+          -10.0 -0.1]
+    A2 = [-0.1  10.0;
+           -1.0 -0.1]
+    Ad1 = A1*dt + I
+    Ad2 = A2*dt + I
+
+    status = TRAJ_INFEASIBLE
+    X::Vector{Vector{<:Real}} = [x0]
+    As::Vector{Matrix{<:Real}} = []
+    bs::Vector{Vector{<:Real}} = []
+
+    iter = 1
+    while status == TRAJ_INFEASIBLE
+        # Initialize all
+        x = x0
+        X = [x0]
+        As = []
+        bs = []
+        # Run the simulatio n loop
+        for _ in 1:numStep
+            if controlSwitch(x)
+                xNext = Ad1*x
+                push!(As, Ad1)
+            else
+                xNext = Ad2*x
+                push!(As, Ad2)
+            end
+            push!(X, xNext)
+            push!(bs, zeros(2))
+            if inTerminalSet(X[end])
+                status = TRAJ_FOUND
+                break
+            elseif outOfBound(X[end])
+                status = TRAJ_UNSAFE
+                break
+            end
+            x = xNext
+        end
+
+        iter += 1
+        numStep *= 2        # It's likely that it couldn't reach the terminal set. Increase #steps
+        if iter >= maxIteration
+            status = TRAJ_MAX_ITER_REACHED
+            break
+        end
+    end
+    return status, X, As, bs
+end
+
+
+function simulateMinFunc(x0, termSet, bound;
+                         maxIteration::Integer=10,
+                         numStep::Integer=100,
+                         xT=nothing)
+    """
+    DC-DC Buck Converter Model from
+    https://lucris.lub.lu.se/ws/portalfiles/portal/4673551/8571461.pdf
+    """
+    inTerminalSet(x) = all(termSet.lb .<= x) && all(x .<= termSet.ub)
+    outOfBound(x) = any(x .< bound.lb) || any(bound.ub .< x)
+    stopCondition(x) = inTerminalSet(x) || outOfBound(x)
+
+    dt = 0.1
+    A1 = [-5 -4; -1 -2]
+    B = [-3, -21][:,:]
+    k = [1., 0.]
+    k1 = [3., 2.]
+    k2 = k - k1
+    A = A1 - B*transpose(k1)
+    A2 = A + B*transpose(k2)
+    Ad1 = A1 *dt + I
+    Ad2 = A2 *dt + I
+    controlSwitch(x) = dot(k, x) <= 0 ? true : false
+
+    status = TRAJ_INFEASIBLE
+    X::Vector{Vector{<:Real}} = [x0]
+    As::Vector{Matrix{<:Real}} = []
+    bs::Vector{Vector{<:Real}} = []
+
+    iter = 1
+    while status == TRAJ_INFEASIBLE
+        # Initialize all
+        x = x0
+        X = [x0]
+        As = []
+        bs = []
+        # Run the simulatio n loop
+        for _ in 1:numStep
+            if controlSwitch(x)
+                xNext = Ad1*x
+                push!(As, Ad1)
+            else
+                xNext = Ad2*x
+                push!(As, Ad2)
+            end
+            push!(X, xNext)
+            push!(bs, zeros(2))
+            if inTerminalSet(X[end])
+                status = TRAJ_FOUND
+                break
+            elseif outOfBound(X[end])
+                status = TRAJ_UNSAFE
+                break
+            end
+            x = xNext
+        end
+
+        iter += 1
+        numStep *= 2        # It's likely that it couldn't reach the terminal set. Increase #steps
+        if iter >= maxIteration
+            status = TRAJ_MAX_ITER_REACHED
+            break
+        end
+    end
+    return status, X, As, bs
+end
+
+"Sample a trajectory for the 2D piecewise linear system (Filippov systems)"
+function samplePiecewiseLinearSystem(counterExamples::Vector{CounterExample},
+                                     x0::Vector{<:Real},
+                                     env::Env,
+                                     simulateFunc::Function;
+                                     useTrajectory::Bool=false,
+                                     xT=Vector{Float64}l())
+    numDim = length(x0)
+    xT = length(xT) == 0 ? zeros(numDim) : xT
+    status, X, As, bs = simulateFunc(x0, env.termSet, env.workspace; xT=xT)
+    isUnsafe = status != TRAJ_FOUND
+
+    if length(counterExamples) == 0
+        ith = 1
+    else
+        ith = counterExamples[end].ith + 1
+    end
+
+    if length(X) == 1
+        dynamics = Dynamics(rand(numDim, numDim), rand(numDim), numDim)
+        α = 1
+        ce = CounterExample(X[1], α, dynamics, X[1], false, isUnsafe, ith)
+        push!(counterExamples, ce)
+        return
+    else
+        if useTrajectory
+            for i in 1:length(X)-1
+                A = As[i]
+                b = bs[i]
+                dynamics = Dynamics(A, b, numDim)
+                ce = CounterExample(X[i], -1, dynamics, X[i+1], false, isUnsafe, ith)
+                push!(counterExamples, ce)
+            end
+        else
+            A = As[1]
+            b = bs[1]
+            dynamics = Dynamics(A, b, numDim)
+            α = norm(X[2]-X[1], 2)
+            ce = CounterExample(X[1], α, dynamics, X[2], false, isUnsafe, ith)
+            push!(counterExamples, ce)
+        end
+    end
+
+end

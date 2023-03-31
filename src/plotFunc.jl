@@ -142,6 +142,11 @@ function plot2DCLF(iter, counterExamples, env, params, lfs; regions=nothing, fil
     contour!(x, y, Vtemp, levels=[0], color=:red, style=:dot, linewidth=2, legend=:none)
     contour!(x, y, z, levels=100, color=:turbo, colorbar=true)
 
+    if length(counterExamples) == 0
+        savefigure(params.imgFileDir, "$filename$iter.png")
+        return
+    end
+
     for ce in filter(c -> !c.isUnsafe, counterExamples)
         x = ce.x
         y = ce.y
@@ -164,15 +169,7 @@ function plot2DCLF(iter, counterExamples, env, params, lfs; regions=nothing, fil
     # Vx, Vy = edges(vor)
 
     # plot!(Vx, Vy, style=:dash, color=:black, label = "Voronoi")
-    if isnothing(params.imgFileDir)
-        print(pwd())
-    else
-        if !isdir(params.imgFileDir)
-            mkdir(params.imgFileDir)
-        end
-        filepath = joinpath(params.imgFileDir, "$filename$iter.png")
-        savefig(filepath)
-    end
+    savefigure(params.imgFileDir, "$filename$iter.png")
 end
 
 

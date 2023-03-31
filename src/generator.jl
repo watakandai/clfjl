@@ -10,7 +10,7 @@ function generateCandidateCLF(counterExamples::Vector{CounterExample},
     λb, lfsBounds = addBoundaryLFs(model, env, N)
     λo, lfsObstacles = addObstacleLFs(model, env, N)
 
-    ith = counterExamples[end].ith
+    ith = length(counterExamples)==0 ? 0 : counterExamples[end].ith
     # lfExamples = [JuMPLyapunovFunction(@variable(model, [1:N], lower_bound=-1, upper_bound=1),
     #                                    @variable(model)) for _ in counterExamples]
     lfExamples = [JuMPLyapunovFunction(@variable(model, [1:N], lower_bound=-1, upper_bound=1),

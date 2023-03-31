@@ -41,6 +41,10 @@ function synthesizeCLF(lines::Vector{Tuple{Vector{Float64}, Vector{Float64}}},
 
         println("Plotting ...")
         plotFunc(iter, counterExamples, env, params, lfs)
+        trajectories = simulateWithCLFs(lfs, counterExamples, env;
+                                         numSample=100, numStep=50)
+        clfjl.plotTrajectories3D(trajectories, lfs, env; imgFileDir=params.imgFileDir, filename="$(iter)withVoronoiControl", numTraj=10)
+
 
         params.print && println("|-- Generator Lyapunov Gap: ", genLyapunovGap)
         if genLyapunovGap < params.thresholdLyapunovGapForGenerator
@@ -58,11 +62,13 @@ function synthesizeCLF(lines::Vector{Tuple{Vector{Float64}, Vector{Float64}}},
 
         params.print && println("|-- CE: ", x, ", ", verLyapunovGap)
         if verLyapunovGap < params.thresholdLyapunovGapForVerifier
-            println("Valid controller: terminated")
-            @save joinpath(params.lfsFileDir, "learnedCLFs.jld2") lfs counterExamples env
-            trajectories = simulateWithCLFs(lfs, counterExamples, env; numStep=1000)
-            plotTrajectories(trajectories, lfs, env; imgFileDir=params.imgFileDir)
-            return CONTROLLER_FOUND, lfs
+            if length(lines) > 0 || length(counterExamples) > 0
+                println("Valid controller: terminated")
+                @save joinpath(params.lfsFileDir, "learnedCLFs.jld2") lfs counterExamples env
+                trajectories = simulateWithCLFs(lfs, counterExamples, env; numStep=30)
+                plotTrajectories(trajectories, lfs, env; imgFileDir=params.imgFileDir)
+                return CONTROLLER_FOUND, lfs
+            end
         end
 
         params.print && println("Sampling ...")
