@@ -10,12 +10,12 @@ using LinearAlgebra
 function simulateWithCLFs(x0, lfs, counterExamples, env; numStep=100, withVoronoiControl::Bool=true)::Tuple{SimStatus, StateTraj}
 
     inTerminal(x) = all(env.termSet.lb .<= x) && all(x .<+ env.termSet.ub)
-    outOfBound(x) = any(x .<= env.workspace.lb) && any(env.workspace.ub .<= x)
+    outOfBound(x) = any(x .< env.workspace.lb) || any(env.workspace.ub .< x)
     inObstacles(x) = any(map(o->all(o.lb .≤ x) && all(x .≤ o.ub), env.obstacles))
 
     x = x0
     X = [x0]
-    ceX = map(c -> c.x, counterExamples)
+    safeCEs = filter(c -> !c.isUnsafe, counterExamples)
     dynamicsList = map(c -> c.dynamics, counterExamples)
 
     if outOfBound(x0) || inObstacles(x0)
@@ -25,9 +25,9 @@ function simulateWithCLFs(x0, lfs, counterExamples, env; numStep=100, withVorono
 
     for iStep in 1:numStep
         if withVoronoiControl
-            i = argmin(norm.(map(cex-> cex - x, ceX), 2))
-            counterExample = counterExamples[i]
-            x′ = counterExample.dynamics.A * x + counterExample.dynamics.b
+            i = argmin(norm.(map(c -> c.x - x, safeCEs), 2))
+            c = safeCEs[i]
+            x′ = c.dynamics.A * x + c.dynamics.b
         else
             nextX = map(d -> d.A * x + d.b, dynamicsList)
             Vs = [V(xn, lfs) for xn in nextX]

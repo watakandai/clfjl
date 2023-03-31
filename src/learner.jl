@@ -11,8 +11,9 @@ function synthesizeCLF(lines::Vector{Tuple{Vector{Float64}, Vector{Float64}}},
                        env::Env,
                        solver,
                        sampleFunc,
-                       plotFunc=(args...)->nothing)::Tuple{StatusCode, Vector}
-    counterExamples::Vector{CounterExample} = []
+                       plotFunc=(args...)->nothing,
+                       counterExamples::Vector{CounterExample} = [],
+                       )::Tuple{StatusCode, Vector}
     lfs::LyapunovFunctions = []
 
     for (x0, xT) in lines
