@@ -2,13 +2,6 @@ using DelimitedFiles
 using SparseArrays, OSQP
 using Plots
 
-@enum SampleStatus begin
-    TRAJ_FOUND = 0
-    TRAJ_INFEASIBLE = 1
-    TRAJ_UNSAFE = 2
-    TRAJ_MAX_ITER_REACHED = 3
-end
-
 StateVector = Vector{<:Real}
 StateTraj = Vector{StateVector}
 InputTraj = Vector{StateVector}
@@ -101,7 +94,7 @@ function sampleOMPLDubin(iter,
 
     # Add all data points in the data as unsafe counterexamples
     isUnsafe = status != TRAJ_FOUND
-    println("isUnsafe: ", isUnsafe, ", status: ", status, ", length(X): ", length(X))
+    # println("isUnsafe: ", isUnsafe, ", status: ", status, ", length(X): ", length(X))
 
     numDim = 4
     time = 1:length(X)
@@ -228,7 +221,7 @@ function simulateOMPLDubin(x0::Vector{<:Real},
 end
 
 
-function simulateMPCSet(Ad, Bd, Q, R, QN, x0, xTmin_, xTmax_, xmin, xmax, umin, umax;
+function callMPCSet(Ad, Bd, Q, R, QN, x0, xTmin_, xTmax_, xmin, xmax, umin, umax;
                      numHorizon=10, numStep=100, stopCondition=nothing)
     # Cast MPC problem to a QP: x = (x(0),x(1),...,x(N),u(0),...,u(N-1))
     """
@@ -269,7 +262,7 @@ function simulateMPCSet(Ad, Bd, Q, R, QN, x0, xTmin_, xTmax_, xmin, xmax, umin, 
     # xTmax = xTmax_ - dt
     xTmin = xTmin_
     xTmax = xTmax_
-    println("xTmin = $xTmin, xTmax = $xTmax")
+    # println("xTmin = $xTmin, xTmax = $xTmax")
 
     # - quadratic objective
     P = blockdiag(kron(speye(N+1), spzeros(nx,nx)), kron(speye(N), R), kron(speye(N), Q), QN, kron(speye(N+1), spzeros(nx,nx)))
@@ -314,7 +307,9 @@ function simulateMPCSet(Ad, Bd, Q, R, QN, x0, xTmin_, xTmax_, xmin, xmax, umin, 
 
     # Simulate in closed loop
     X::Vector{Vector{<:Real}} = [x0]
-    U = []
+    U::Vector{Vector{<:Real}} = []
+    As::Vector{Matrix{<:Real}} = []
+    bs::Vector{Vector{<:Real}} = []
     @time for iStep in 1 : numStep
         # Solve
         res = OSQP.solve!(m)
@@ -322,8 +317,10 @@ function simulateMPCSet(Ad, Bd, Q, R, QN, x0, xTmin_, xTmax_, xmin, xmax, umin, 
         # Check solver status
         if res.info.status != :Solved
             println("Could not Solve!")
-            println(X, U)
-            error("OSQP did not solve the problem!")
+            # println(X)
+            # println(U)
+            # error("OSQP did not solve the problem!")
+            return X, U, As, bs
         end
 
         # println("Solved!")
@@ -334,8 +331,8 @@ function simulateMPCSet(Ad, Bd, Q, R, QN, x0, xTmin_, xTmax_, xmin, xmax, umin, 
 
         push!(U, ctrl)
         xNext = Ad * x0 + Bd * ctrl
-        # println(ctrl, ", ", xNext, ", ", stopCondition(xNext), ", ", iStep)
-
+        push!(As, Ad)
+        push!(bs, Bd * ctrl)
         push!(X, xNext)
 
         if !isnothing(stopCondition) && stopCondition(xNext)
@@ -349,12 +346,12 @@ function simulateMPCSet(Ad, Bd, Q, R, QN, x0, xTmin_, xTmax_, xmin, xmax, umin, 
         l[1:nx], u[1:nx] = -x0, -x0
         OSQP.update!(m; l=l, u=u)
     end
-    return X, U
+    return X, U, As, bs
 end
 
 
-function simulateMPC(Ad, Bd, Q, R, QN, RD, x0, xr, xmin, xmax, umin, umax;
-                     numHorizon=10, numStep=100, stopCondition=nothing)
+function callMPC(Ad, Bd, Q, R, QN, RD, x0, xr, xmin, xmax, umin, umax;
+                 numHorizon=10, numStep=100, stopCondition=nothing)
     # Cast MPC problem to a QP: x = (x(0),x(1),...,x(N),u(0),...,u(N-1))
     """
     Minimize
@@ -409,21 +406,28 @@ function simulateMPC(Ad, Bd, Q, R, QN, RD, x0, xr, xmin, xmax, umin, umax;
 
     # Simulate in closed loop
     X::Vector{Vector{<:Real}} = [x0]
-    U = []
+    U::Vector{Vector{<:Real}} = []
+    As::Vector{Matrix{<:Real}} = []
+    bs::Vector{Vector{<:Real}} = []
     @time for _ in 1 : numStep
         # Solve
         res = OSQP.solve!(m)
 
         # Check solver status
         if res.info.status != :Solved
-            println("OSQP did not solve the problem!")
-            error("OSQP did not solve the problem!")
+            println("Could not Solve!")
+            # println(X)
+            # println(U)
+            # error("OSQP did not solve the problem!")
+            return X, U, As, bs
         end
 
         # Apply first control input to the plant
         ctrl = res.x[(N+1)*nx+1:(N+1)*nx+nu]
         push!(U, ctrl)
         xNext = Ad * x0 + Bd * ctrl
+        push!(As, Ad)
+        push!(bs, Bd * ctrl)
         push!(X, xNext)
 
         if !isnothing(stopCondition) && stopCondition(xNext)
@@ -437,328 +441,117 @@ function simulateMPC(Ad, Bd, Q, R, QN, RD, x0, xr, xmin, xmax, umin, umax;
         l[1:nx], u[1:nx] = -x0, -x0
         OSQP.update!(m; l=l, u=u)
     end
-    return X, U
+    return X, U, As, bs
 end
 
 
-function simulateSimpleCar(Ad, Bd, x0::Vector{<:Real},
-                           termSet::HyperRectangle,
-                           bound::HyperRectangle,
-                           inputSet::HyperRectangle;
-                           maxIteration::Integer=10,
-                           numStep::Integer=100,
-                           numHorizon::Integer=10,
-                           xT::Vector{<:Real}=[]
-                           )::Tuple{SampleStatus, StateTraj, InputTraj}
+function simulateMPC(x0::Vector{<:Real},
+                     xT::Vector{<:Real},
+                     env::Env,
+                     numStep::Integer,
+                     Ad, Bd, Q, R, QN, RD, numHorizon, inputSet;
+                     useSet::Bool=false)
 
-    (nx, nu) = size(Bd)
-    @assert size(Ad) == (nx, nx)
-    @assert length(x0) == nx
-    @assert length(termSet.lb) == nx
-    @assert length(termSet.ub) == nx
-    @assert length(bound.lb) == nx
-    @assert length(bound.ub) == nx
-    # @assert length(inputSet.lb) == nu
-    # @assert length(inputSet.ub) == nu
-
-    # # Objective function
-    if length(x0) == 2
-        # Q = spdiagm([0.1, 1])              # Weights for Xs from 0:N-1
-        # QN = Q                        # Weights for the terminal state X at N (Xn or xT)
-        # R = 100 * speye(nu)
-        Q = spdiagm([0.1, 1])              # Weights for Xs from 0:N-1
-        QN = Q                        # Weights for the terminal state X at N (Xn or xT)
-        R = 1 * speye(nu)
-        RD = 1 * speye(nu)
-    else
-        Q = spdiagm([10, 1, 1])           # Weights for Xs from 0:N-1
-        QN = 1 * Q                          # Weights for the terminal state X at N (Xn or xT)
-        R = 1 * speye(nu)
-        RD = 1 * speye(nu)
-    end
-    # println(Q, QN, R)
-    if length(xT) == 0
-        xT =  (termSet.lb + termSet.ub) / 2
-    end
-
-    inTerminalSet(x) = all(termSet.lb .<= x) && all(x .<= termSet.ub)
-    outOfBound(x) = any(x .< bound.lb) || any(bound.ub .< x)
+    inTerminalSet(x) = all(env.termSet.lb .<= x) && all(x .<= env.termSet.ub)
+    outOfBound(x) = any(x .< env.workspace.lb) || any(env.workspace.ub .< x)
     stopCondition(x) = inTerminalSet(x) || outOfBound(x)
 
     status = TRAJ_INFEASIBLE
     X::Vector{Vector{<:Real}} = [x0]
     U::Vector{Vector{<:Real}} = []
+    As::Vector{Matrix{<:Real}} = []
+    bs::Vector{Vector{<:Real}} = []
 
-    iter = 1
-    while status == TRAJ_INFEASIBLE
-        try
-            X, U = simulateMPC(Ad, Bd, Q, R, QN, RD, x0, xT, # termSet.lb, termSet.ub
-                               bound.lb, bound.ub,
-                               inputSet.lb, inputSet.ub;
-                               numStep=numStep,
-                               stopCondition=stopCondition,
-                               numHorizon=numHorizon)
-            # X, U = simulateMPCSet(Ad, Bd, Q, R, QN, x0, termSet.lb, termSet.ub,
-            #                     bound.lb, bound.ub,
-            #                     inputSet.lb, inputSet.ub;
-            #                     numStep=numStep,
-            #                     stopCondition=stopCondition,
-            #                     numHorizon=numHorizon)
-        catch e
-            println(e)
-            status = TRAJ_UNSAFE
-            break
+    try
+        if useSet
+            X, U, As, bs = callMPCSet(Ad, Bd, Q, R, QN, x0,
+                                      env.termSet.lb, env.termSet.ub,
+                                      env.workspace.lb, env.workspace.ub,
+                                      inputSet.lb, inputSet.ub;
+                                      numStep=numStep,
+                                      stopCondition=stopCondition,
+                                      numHorizon=numHorizon)
+        else
+            X, U, As, bs = callMPC(Ad, Bd, Q, R, QN, RD, x0, xT,
+                                   env.workspace.lb, env.workspace.ub,
+                                   inputSet.lb, inputSet.ub;
+                                   numStep=numStep,
+                                   stopCondition=stopCondition,
+                                   numHorizon=numHorizon)
         end
-        if inTerminalSet(X[end])
-            status = TRAJ_FOUND
-            break
-        elseif outOfBound(X[end])
-            status = TRAJ_UNSAFE
-            break
-        end
-        iter += 1
-        numStep *= 2        # It's likely that it couldn't reach the terminal set. Increase #steps
-        if iter >= maxIteration
-            status = TRAJ_MAX_ITER_REACHED
-            break
-        end
+    catch e
+        println(e)
+        status = TRAJ_UNSAFE
     end
-    return status, X, U
+
+    if inTerminalSet(X[end])
+        status = TRAJ_FOUND
+    elseif outOfBound(X[end])
+        status = TRAJ_UNSAFE
+    end
+    return X, U, As, bs, status
 end
 
 
-"Sample a trajectory for the Dubin's Car model using the MPC contoller"
-function sampleSimpleCar(counterExamples::Vector{CounterExample},
-                         x0::Vector{<:Real},
-                         env::Env,
-                         Ad::Matrix{<:Real},
-                         Bd::Matrix{<:Real},
-                         inputSet::HyperRectangle;
-                         xT::Vector{<:Real}=[])
-    numDim = length(x0)
-    status, X, U = simulateSimpleCar(sparse(Ad),
-                                     sparse(Bd),
-                                     x0,
-                                     env.termSet,
-                                     env.workspace,
-                                     inputSet;
-                                     xT=xT)
-    # Choices if Unsafe
-    # 1. Add all data points in the data as unsafe counterexamples
-    # 2. Only add last two to unsafe counterexamples
-    isUnsafe = status != TRAJ_FOUND
+"Default function for simulating using the step function"
+function simulateWithStepFunc(x0::Vector{<:Real},
+                              xT::Vector{<:Real},
+                              env::Env,
+                              numStep::Integer,
+                              stepFunc)
 
-    if length(counterExamples) == 0
-        ith = 1
-    else
-        ith = counterExamples[end].ith + 1
-    end
+    inTerminalSet(x) = all(env.termSet.lb .<= x) && all(x .<= env.termSet.ub)
+    outOfBound(x) = any(x .< env.workspace.lb) || any(env.workspace.ub .< x)
 
-    if length(X) == 1
-        dynamics = Dynamics(Ad, Bd[:,1], numDim)
-        α = 1
-        ce = CounterExample(X[1], α, dynamics, X[1], false, isUnsafe, ith)
-        push!(counterExamples, ce)
-        return
-    end
-
-    # if length(counterExamples) == 0
-        # for i in 1:length(X)-1
-        #     b = Bd * U[i]
-        #     dynamics = Dynamics(Ad, b, numDim)
-        #     α = norm(X[i+1]-X[i], 2)
-        #     ce = CounterExample(X[i], α, dynamics, X[i+1], false, isUnsafe, ith)
-        #     push!(counterExamples, ce)
-        # end
-
-    # end
-    # else
-        b = Bd * U[1]
-        dynamics = Dynamics(Ad, b, numDim)
-        # α = norm(X[2]-X[1], 2)
-        α = norm(X[1], 2)
-        ce = CounterExample(X[1], α, dynamics, X[2], false, isUnsafe, ith)
-        push!(counterExamples, ce)
-    # end
-end
-
-
-function simulateOptControl(A, B, b, x0, xT, boundary)::Tuple{SampleStatus, StateTraj, InputTraj}
-end
-
-
-function simulateCloseLoop(A, b, x0;
-                           numStep=100, stopCondition=nothing)::Tuple{StateTraj, InputTraj}
-    x::Vector{<:Real} = x0
+    status = TRAJ_INFEASIBLE
     X::Vector{Vector{<:Real}} = [x0]
     U::Vector{Vector{<:Real}} = []
+    As::Vector{Matrix{<:Real}} = []
+    bs::Vector{Vector{<:Real}} = []
+    x = x0
+
     for _ in 1:numStep
-        xNext = A*x + b
-        push!(X, xNext)
-        if !isnothing(stopCondition) && stopCondition(xNext)
+        X, U, As, bs = stepFunc(x, xT, X, U, As, bs) # stepFunc must contain the dynamics
+        xNext = X[end]
+        if inTerminalSet(xNext)
+            status = TRAJ_FOUND
+            break
+        elseif outOfBound(xNext)
+            status = TRAJ_UNSAFE
             break
         end
         x = xNext
     end
-    return X, U
+    return X, U, As, bs, status
 end
 
 
-"Stability Example with Known Control. u=-1/2*I"
-function simulateStabilityExample(x0, termSet, bound;
-                                  maxIteration::Integer=10,
-                                  numStep::Integer=100,
-                                  )::Tuple{SampleStatus, StateTraj, InputTraj}
-    N = 2
-    A = [1 1;
-         0 1]
-    b = zeros(N)
-    K = [-1/2 0;
-         0 -1/2]
-    A′ = A + K
-    inTerminalSet(x) = all(termSet.lb .<= x) && all(x .<= termSet.ub)
-    outOfBound(x) = any(x .< bound.lb) || any(bound.ub .< x)
-    stopCondition(x) = inTerminalSet(x) || outOfBound(x)
+"Default function for sampling trajectory. Either pass simulateFunc or stepFunc"
+function sampleTrajectory(x0::Vector{<:Real},
+                          xT::Vector{<:Real},
+                          env::Env,
+                          numStep::Integer,
+                          maxIteration::Integer;
+                          stepFunc=nothing,
+                          simulateFunc=nothing)
 
     status = TRAJ_INFEASIBLE
-    X = nothing
-    U = nothing
-
     iter = 1
-    while status == TRAJ_INFEASIBLE
-        X, U = simulateCloseLoop(A′, b, x0; numStep=numStep, stopCondition=stopCondition)
-        if inTerminalSet(X[end])
-            status = TRAJ_FOUND
-            break
-        elseif outOfBound(X[end])
-            status = TRAJ_UNSAFE
-            break
-        end
-        iter += 1
-        numStep *= 2        # It's likely that it couldn't reach the terminal set. Increase #steps
-        if iter >= maxIteration
-            status = TRAJ_MAX_ITER_REACHED
-            break
-        end
+
+    if isnothing(simulateFunc) && isnothing(stepFunc)
+        throw(ArgumentError("Must provide either 'simulateFunc' or 'stepFunc'."))
     end
-    return status, X, U
-end
 
-
-"Sample a trajectory for the 2D toy example using the hand-crafted controller"
-function sampleStabilityExample(counterExamples::Vector{CounterExample},
-                                x0::Vector{<:Real},
-                                env::Env,
-                                A::Matrix{<:Real},
-                                b::Vector{<:Real})
-    numDim = length(x0)
-    dynamics = clfjl.Dynamics(A, b, numDim)
-
-    status, X, U = simulateStabilityExample(x0, env.termSet, env.workspace)
-    if status == TRAJ_MAX_ITER_REACHED
-        return
+    if isnothing(simulateFunc)
+        simulateFunc = (args...) -> simulateWithStepFunc(args..., stepFunc)
     end
-    # Choices if Unsafe
-    # 1. Add all data points in the data as unsafe counterexamples
-    # 2. Only add last two to unsafe counterexamples
-    isUnsafe = status != TRAJ_FOUND
-
-    for i in 1:length(X)-1
-        ce = CounterExample(X[i], -1, dynamics, X[i+1], false, isUnsafe)
-        push!(counterExamples, ce)
-    end
-end
-
-
-function StabilityExample(;x=[1., 1.],
-                          termLB::Union{Vector{<:Real}, <:Real}=-0.01,
-                          termUB::Union{Vector{<:Real}, <:Real}=0.01,
-                          boundLB::Union{Vector{<:Real}, <:Real}=-1.1,
-                          boundUB::Union{Vector{<:Real}, <:Real}=1.1)::Nothing
-    N = 2
-    @assert length(x) == N
-
-    termLBs = isa(termLB, Vector{<:Real}) ? termLB : termLB.*ones(N)
-    termUBs = isa(termUB, Vector{<:Real}) ? termUB : termUB.*ones(N)
-    boundLBs = isa(boundLB, Vector{<:Real}) ? boundLB : boundLB.*ones(N)
-    boundUBs = isa(boundUB, Vector{<:Real}) ? boundUB : boundUB.*ones(N)
-    termSet = clfjl.HyperRectangle(termLBs, termUBs)
-    bound = clfjl.HyperRectangle(boundLBs, boundUBs)
-
-    scatter([0], [0], markershape=:circle)
-    numTraj = 100
-    for i in 1:numTraj
-        x = rand(N) * 2 .- 1
-        status, X, U = simulateStabilityExample(x, termSet, bound)
-        Xs = [x[1] for x in X]
-        Ys = [x[2] for x in X]
-        plot!(Xs, Ys, aspect_ratio=:equal)
-        # scatter!(Xs, Ys, aspect_ratio=:equal, markershape=:circle)
-    end
-    savefig(joinpath(@__DIR__, "StabilityExample.png"))
-end
-# StabilityExample(x=[-1., 1.], boundLB=-1.1, boundUB=1.1)
-
-
-
-function runCloseLoop(A, b, x0;
-    numStep=100, stopCondition=nothing)::Tuple{StateTraj, InputTraj}
-end
-
-
-function simulateBuckConverter(x0, termSet, bound;
-                               maxIteration::Integer=10,
-                               numStep::Integer=100,
-                            #    k1::Float64=2.42591,
-                               k1::Float64=1.5,
-                               k2::Float64=1.,
-                               xT::Vector{Float64}=[0., 0.])
-    """
-    DC-DC Buck Converter Model from
-    https://files.cercomp.ufg.br/weby/up/762/o/Slides-Seminario.pdf?1658240138
-    """
-    inTerminalSet(x) = all(termSet.lb .<= x) && all(x .<= termSet.ub)
-    outOfBound(x) = any(x .< bound.lb) || any(bound.ub .< x)
-    stopCondition(x) = inTerminalSet(x) || outOfBound(x)
-
-    dt = 0.1
-    A = [0 1;
-         -1 -1]
-    b = [0, 1][:,:]
-    Ad = A*dt + I
-    Bd = b*dt
-
-    h(x) = k1*(x[1] − xT[1]) + k2*(x[2] - xT[2])
-    controlFunc(x) = h(x) > 0 ? [0] : [1]
-
-    status = TRAJ_INFEASIBLE
     X::Vector{Vector{<:Real}} = [x0]
+    U::Vector{Vector{<:Real}} = []
     As::Vector{Matrix{<:Real}} = []
     bs::Vector{Vector{<:Real}} = []
-
-    iter = 1
     while status == TRAJ_INFEASIBLE
-        # Initialize all
-        x = x0
-        X = [x0]
-        As = []
-        bs = []
         # Run the simulatio n loop
-        for _ in 1:numStep
-            xNext = Ad*x + Bd*u
-            push!(X, xNext)
-            push!(As, Ad)
-            push!(bs, Bd*u)
-            if inTerminalSet(X[end])
-                status = TRAJ_FOUND
-                break
-            elseif outOfBound(X[end])
-                status = TRAJ_UNSAFE
-                break
-            end
-            x = xNext
-        end
-
+        X, U, As, bs, status = simulateFunc(x0, xT, env, numStep)
         iter += 1
         numStep *= 2        # It's likely that it couldn't reach the terminal set. Increase #steps
         if iter >= maxIteration
@@ -766,152 +559,28 @@ function simulateBuckConverter(x0, termSet, bound;
             break
         end
     end
-    return status, X, As, bs
+    return X, U, As, bs, status
 end
 
 
-function simulateSwitchStable(x0, termSet, bound;
-                              maxIteration::Integer=10,
+"Sample a counter example by sampling trajectory"
+function sampleCounterExample(counterExamples::Vector{CounterExample},
+                              x0::Vector{<:Real},
+                              env::Env;
                               numStep::Integer=100,
-                              xT=nothing)
-    """
-    DC-DC Buck Converter Model from
-    https://lucris.lub.lu.se/ws/portalfiles/portal/4673551/8571461.pdf
-    """
-    inTerminalSet(x) = all(termSet.lb .<= x) && all(x .<= termSet.ub)
-    outOfBound(x) = any(x .< bound.lb) || any(bound.ub .< x)
-    stopCondition(x) = inTerminalSet(x) || outOfBound(x)
+                              maxIteration::Integer=10,
+                              useTrajectory::Bool=false,
+                              useStabilityAlpha::Bool=false,
+                              xT::Vector{<:Real}=Float64[],
+                              stepFunc=nothing,
+                              simulateFunc=nothing)
 
-    controlSwitch(x) = x[1]*x[2] ≥ 0 ? true : false
-    dt = 0.1
-    A1 = [-0.1  1.0;
-          -10.0 -0.1]
-    A2 = [-0.1  10.0;
-           -1.0 -0.1]
-    Ad1 = A1*dt + I
-    Ad2 = A2*dt + I
-
-    status = TRAJ_INFEASIBLE
-    X::Vector{Vector{<:Real}} = [x0]
-    As::Vector{Matrix{<:Real}} = []
-    bs::Vector{Vector{<:Real}} = []
-
-    iter = 1
-    while status == TRAJ_INFEASIBLE
-        # Initialize all
-        x = x0
-        X = [x0]
-        As = []
-        bs = []
-        # Run the simulatio n loop
-        for _ in 1:numStep
-            if controlSwitch(x)
-                xNext = Ad1*x
-                push!(As, Ad1)
-            else
-                xNext = Ad2*x
-                push!(As, Ad2)
-            end
-            push!(X, xNext)
-            push!(bs, zeros(2))
-            if inTerminalSet(X[end])
-                status = TRAJ_FOUND
-                break
-            elseif outOfBound(X[end])
-                status = TRAJ_UNSAFE
-                break
-            end
-            x = xNext
-        end
-
-        iter += 1
-        numStep *= 2        # It's likely that it couldn't reach the terminal set. Increase #steps
-        if iter >= maxIteration
-            status = TRAJ_MAX_ITER_REACHED
-            break
-        end
-    end
-    return status, X, As, bs
-end
-
-
-function simulateMinFunc(x0, termSet, bound;
-                         maxIteration::Integer=10,
-                         numStep::Integer=100,
-                         xT=nothing)
-    """
-    DC-DC Buck Converter Model from
-    https://lucris.lub.lu.se/ws/portalfiles/portal/4673551/8571461.pdf
-    """
-    inTerminalSet(x) = all(termSet.lb .<= x) && all(x .<= termSet.ub)
-    outOfBound(x) = any(x .< bound.lb) || any(bound.ub .< x)
-    stopCondition(x) = inTerminalSet(x) || outOfBound(x)
-
-    dt = 0.1
-    A1 = [-5 -4; -1 -2]
-    B = [-3, -21][:,:]
-    k = [1., 0.]
-    k1 = [3., 2.]
-    k2 = k - k1
-    A = A1 - B*transpose(k1)
-    A2 = A + B*transpose(k2)
-    Ad1 = A1 *dt + I
-    Ad2 = A2 *dt + I
-    controlSwitch(x) = dot(k, x) <= 0 ? true : false
-
-    status = TRAJ_INFEASIBLE
-    X::Vector{Vector{<:Real}} = [x0]
-    As::Vector{Matrix{<:Real}} = []
-    bs::Vector{Vector{<:Real}} = []
-
-    iter = 1
-    while status == TRAJ_INFEASIBLE
-        # Initialize all
-        x = x0
-        X = [x0]
-        As = []
-        bs = []
-        # Run the simulatio n loop
-        for _ in 1:numStep
-            if controlSwitch(x)
-                xNext = Ad1*x
-                push!(As, Ad1)
-            else
-                xNext = Ad2*x
-                push!(As, Ad2)
-            end
-            push!(X, xNext)
-            push!(bs, zeros(2))
-            if inTerminalSet(X[end])
-                status = TRAJ_FOUND
-                break
-            elseif outOfBound(X[end])
-                status = TRAJ_UNSAFE
-                break
-            end
-            x = xNext
-        end
-
-        iter += 1
-        numStep *= 2        # It's likely that it couldn't reach the terminal set. Increase #steps
-        if iter >= maxIteration
-            status = TRAJ_MAX_ITER_REACHED
-            break
-        end
-    end
-    return status, X, As, bs
-end
-
-"Sample a trajectory for the 2D piecewise linear system (Filippov systems)"
-function samplePiecewiseLinearSystem(counterExamples::Vector{CounterExample},
-                                     x0::Vector{<:Real},
-                                     env::Env,
-                                     simulateFunc::Function;
-                                     useTrajectory::Bool=false,
-                                     xT=Vector{Float64}l())
     numDim = length(x0)
-    xT = length(xT) == 0 ? zeros(numDim) : xT
-    status, X, As, bs = simulateFunc(x0, env.termSet, env.workspace; xT=xT)
+    xT = length(xT) == 0 ? (env.termSet.lb + env.termSet.ub) / 2 : xT
+
+    X, U, As, bs, status = sampleTrajectory(x0, xT, env, numStep, maxIteration;
+                                            stepFunc=stepFunc,
+                                            simulateFunc=simulateFunc)
     isUnsafe = status != TRAJ_FOUND
 
     if length(counterExamples) == 0
@@ -925,24 +594,225 @@ function samplePiecewiseLinearSystem(counterExamples::Vector{CounterExample},
         α = 1
         ce = CounterExample(X[1], α, dynamics, X[1], false, isUnsafe, ith)
         push!(counterExamples, ce)
-        return
+        return X, U, status
     else
         if useTrajectory
             for i in 1:length(X)-1
                 A = As[i]
                 b = bs[i]
                 dynamics = Dynamics(A, b, numDim)
-                ce = CounterExample(X[i], -1, dynamics, X[i+1], false, isUnsafe, ith)
+                if useStabilityAlpha
+                    α = norm(X[i], 2) # This is for stability examples
+                else
+                    α = norm(X[i+1]-X[i], 2)
+                end
+                ce = CounterExample(X[i], α, dynamics, X[i+1], false, isUnsafe, ith)
                 push!(counterExamples, ce)
             end
         else
             A = As[1]
             b = bs[1]
             dynamics = Dynamics(A, b, numDim)
-            α = norm(X[2]-X[1], 2)
+            if useStabilityAlpha
+                α = norm(X[1], 2) # This is for stability examples
+            else
+                α = norm(X[2]-X[1], 2)
+            end
             ce = CounterExample(X[1], α, dynamics, X[2], false, isUnsafe, ith)
             push!(counterExamples, ce)
         end
     end
-
+    return X, U, status
 end
+
+
+"Min Func Example"
+function sampleMinFunc(counterExamples::Vector{CounterExample},
+                       x0::Vector{<:Real},
+                       env::Env;
+                       xT::Vector{<:Real}=Float64[])
+    dt = 0.1
+    A1 = [-5 -4; -1 -2]
+    B = [-3, -21][:,:]
+    k = [1., 0.]
+    k1 = [3., 2.]
+    k2 = k - k1
+    A = A1 - B*transpose(k1)
+    A2 = A + B*transpose(k2)
+    Ad1 = A1 *dt + I
+    Ad2 = A2 *dt + I
+    controlSwitch(x) = dot(k, x) <= 0 ? true : false
+
+    function stepFunc(x, xT, X, U, As, bs)
+        if controlSwitch(x)
+            xNext = Ad1*x
+            push!(As, Ad1)
+        else
+            xNext = Ad2*x
+            push!(As, Ad2)
+        end
+        push!(X, xNext)
+        push!(bs, zeros(2))
+        return X, U, As, bs
+    end
+
+    return sampleCounterExample(counterExamples, x0, env;
+                                xT=xT, stepFunc=stepFunc)
+end
+
+
+"Switch Stable System Example"
+function sampleSwitchStable(counterExamples::Vector{CounterExample},
+                            x0::Vector{<:Real},
+                            env::Env;
+                            xT::Vector{<:Real}=Float64[])
+
+    controlSwitch(x) = x[1]*x[2] ≥ 0 ? true : false
+    dt = 0.1
+    A1 = [-0.1  1.0;
+            -10.0 -0.1]
+    A2 = [-0.1  10.0;
+            -1.0 -0.1]
+    Ad1 = A1*dt + I
+    Ad2 = A2*dt + I
+
+    function stepFunc(x, xT, X, U, As, bs)
+        if controlSwitch(x)
+            xNext = Ad1*x
+            push!(As, Ad1)
+        else
+            xNext = Ad2*x
+            push!(As, Ad2)
+        end
+        push!(X, xNext)
+        push!(bs, zeros(2))
+        return X, U, As, bs
+    end
+
+    return sampleCounterExample(counterExamples, x0, env;
+                                xT=xT, stepFunc=stepFunc)
+end
+
+
+"Buck Converter System Example"
+function sampleBuckConverter(counterExamples::Vector{CounterExample},
+                             x0::Vector{<:Real},
+                             env::Env;
+                             xT::Vector{<:Real}=Float64[])
+    """
+    DC-DC Buck Converter Model from
+    https://files.cercomp.ufg.br/weby/up/762/o/Slides-Seminario.pdf?1658240138
+    """
+    dt = 0.1
+    A = [0 1;
+         -1 -1]
+    b = [0, 1][:,:]
+    Ad = A*dt + I
+    Bd = b*dt
+    h(x) = k1*(x[1] − xT[1]) + k2*(x[2] - xT[2])
+    controlFunc(x) = h(x) > 0 ? [0] : [1]
+
+    function stepFunc(x, xT, X, U, As, bs)
+        u = controlFunc(x)
+        xNext = Ad*x + Bd*u
+        push!(X, xNext)
+        push!(U, u)
+        push!(As, Ad)
+        push!(bs, Bd*u)
+        return X, U, As, bs
+    end
+
+    return sampleCounterExample(counterExamples, x0, env;
+                                xT=xT, stepFunc=stepFunc)
+end
+
+
+"Stability Example with Known Control. u=-1/2*I"
+function sampleStabilityExample(counterExamples::Vector{CounterExample},
+                                x0::Vector{<:Real},
+                                env::Env;
+                                xT::Vector{<:Real}=Float64[])
+
+    N = 2
+    A = [1 1;
+         0 1]
+    b = zeros(N)
+    K = [-1/2 0;
+         0 -1/2]
+    A′ = A + K
+
+    function stepFunc(x, xT, X, U, As, bs)
+        xNext = A′*x + b
+        push!(X, xNext)
+        push!(As, A′)
+        push!(bs, b)
+    return X, U, As, bs
+    end
+
+    return sampleCounterExample(counterExamples, x0, env;
+                xT=xT, stepFunc=stepFunc)
+end
+
+
+"Example"
+function sampleCartPole(counterExamples::Vector{CounterExample},
+                        x0::Vector{<:Real},
+                        env::Env;
+                        xT::Vector{<:Real}=Float64[],
+                        imgFileDir::String)
+    """
+    https://danielpiedrahita.wordpress.com/portfolio/cart-pole-control/
+    """
+    dt = 0.1
+    # Dynamics: X = [x, ẋ, θ, θ̇], U=[force]
+    A = [0 1 0 0;
+         0 0 0.716 0;
+         0 0 0 1;
+         0 0 15.76 0]
+    B = [0, 0.9755, 0, 1.46][:,:]       # [:,:] converts vec to matrix
+    K = [-3.1626, -4.2691, 38.9192, 9.9633]
+
+    function stepFunc(x, xT, X, U, As, bs)
+        u = -transpose(K)*x
+        dx = A*x + B*[u]
+        xNext = x + dx*dt
+        push!(U, [u])
+        push!(X, xNext)
+        push!(As, A*dt+I)
+        push!(bs, B*[u]*dt)
+        return X, U, As, bs
+    end
+
+    X, U, status = sampleCounterExample(counterExamples, x0, env;
+                xT=xT, stepFunc=stepFunc)
+
+    # println("="^100)
+    # println(X)
+    # println(U)
+    # println(status)
+    # println("="^100)
+    ith = counterExamples[end].ith
+    (nx, nu) = size(B)
+    pX = plot(reduce(hcat, X)', layout=(nx, 1))
+    pU = plot(reduce(hcat, U)', layout=(nu, 1))
+    l = @layout [a b]
+    plot(pX, pU, layout=l)
+    savefigure(imgFileDir, "trajectory$(ith).png")
+end
+
+
+"Example"
+function sample3(counterExamples::Vector{CounterExample},
+    x0::Vector{<:Real},
+    env::Env;
+    xT::Vector{<:Real}=Float64[])
+
+    function stepFunc(x, xT, X, U, As, bs)
+    return X, U, As, bs
+    end
+
+    return sampleCounterExample(counterExamples, x0, env;
+                xT=xT, stepFunc=stepFunc)
+end
+
+

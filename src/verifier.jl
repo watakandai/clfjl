@@ -1,10 +1,12 @@
+using JLD2
+
+
 function verifyCandidateCLF(
     counterExamples::Vector{CounterExample},
     lfs::LyapunovFunctions,
     env::Env,
     solver,
     N::Integer,
-    thresholdLyapunovGapForVerifier::Real;
     unreachableRegions=nothing)::Tuple{Vector, Float64}
 
     # isInitSetNegative(lfs, env, solver, N)
@@ -231,4 +233,46 @@ function isInitSetNegative(lfs::LyapunovFunctions,
         return false
     end
     return true
+end
+
+
+function probVerifyCandidateCLF(counterExamples,
+                                lfs,
+                                env,
+                                solver,
+                                N;
+                                checkLyapunovCondition=false)
+
+    trajectories = simulateWithCLFs(lfs, counterExamples, env;
+                                    numSample=10000, numStep=50, withVoronoiControl=true, checkLyapunovCondition=checkLyapunovCondition)
+
+    println("Simulating with the Voronoi Controller if the candidate Lyapunov is safe ...")
+    safeTraj = filter(t->t.status==SIM_TERMINATED, trajectories)
+    unsafeTraj = filter(t->t.status!=SIM_TERMINATED, trajectories)
+    numSafe = length(safeTraj)
+    safeProb = numSafe / length(trajectories)
+
+    println("|-- Voronoi Controller Safety: $(numSafe) / $(length(trajectories))")
+    if safeProb==1
+        if length(counterExamples) > 0
+            # @save joinpath(params.lfsFileDir, "learnedCLFs.jld2") lfs counterExamples env
+            return zeros(N), -1
+        end
+    else
+        unsafeTraj_ = filter(t->length(t.V)>1, unsafeTraj)
+        if length(unsafeTraj_) == 0
+            x = rand(unsafeTraj).X[1]
+        else
+            # i = argmax(map(t -> t.V[end]-t.V[end-1], unsafeTraj_))
+            # x = unsafeTraj_[i].X[end]
+
+            i = argmax(map(t -> diff(t.V), unsafeTraj_))
+            t = unsafeTraj_[i]
+            ind = argmax(diff(t.V))
+            # ind = findall(diff(t.V) .> 0)[1]
+            x = t.X[ind]
+        end
+    end
+
+    return x, 1
 end

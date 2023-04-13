@@ -47,8 +47,7 @@ end
     initSet::HyperRectangle
     termSet::HyperRectangle
     workspace::HyperRectangle
-    obstacles::Vector{HyperRectangle}
-    # hybridSystem::HybridSystem
+    obstacles::Vector{HyperRectangle} = HyperRectangle[]
 end
 
 
@@ -62,15 +61,40 @@ mutable struct CounterExample
     ith::Integer
 end
 
-# mutable struct CounterExampleWithIndex
-#     x::Vector{<:Real}
-#     α::Real
-#     dynamics::Dynamics
-#     y::Vector{<:Real}
-#     isTerminal::Bool
-#     isUnsafe::Bool
-#     ith
-# end
+CounterExamples = Vector{CounterExample}
+
+
+# A trajectory sampled from a real system
+@enum SampleStatus begin
+    TRAJ_FOUND = 0
+    TRAJ_INFEASIBLE = 1
+    TRAJ_UNSAFE = 2
+    TRAJ_MAX_ITER_REACHED = 3
+end
+struct SampleTrajectry
+    X::Vector{Vector{<:Real}}
+    U::Vector{Vector{<:Real}}
+    status::SampleStatus
+end
+
+SampleTrajectries = Vector{SampleTrajectry}
+
+# A trajectory simulated using the "learned" (Voronoi) controller
+@enum SimStatus begin
+    SIM_TERMINATED = 0
+    SIM_INFEASIBLE = 1
+    SIM_UNSAFE = 2
+    SIM_MAX_ITER_REACHED = 3
+end
+
+struct SimTrajectory
+    X::Vector{Vector{<:Real}}
+    V::Vector{<:Real}
+    status::SimStatus
+end
+
+SimTrajectories = Vector{SimTrajectory}
+
 
 struct LyapunovFunction
     a::Vector{<:Real}
@@ -78,12 +102,13 @@ struct LyapunovFunction
 end
 
 
+LyapunovFunctions = Vector{LyapunovFunction}
+
+
 struct JuMPLyapunovFunction
     a::Vector{VariableRef}
     b::VariableRef
 end
-
-LyapunovFunctions = Vector{LyapunovFunction}
 
 
 include("sample.jl")

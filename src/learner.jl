@@ -3,6 +3,7 @@ using JLD2
     CONTROLLER_FOUND = 0
     CONTROLLER_INFEASIBLE = 1
     MAX_ITER_REACHED = 2
+    PROB_SAFE_LYAP_FOUND = 3
 end
 
 "Synthesize Polyhedral Control Lyapunov functions through Sampling Counter Examples"
@@ -10,9 +11,10 @@ function synthesizeCLF(lines::Vector{Tuple{Vector{Float64}, Vector{Float64}}},
                        params::Parameters,
                        env::Env,
                        solver,
-                       sampleFunc,
+                       sampleFunc;
                        plotFunc=(args...)->nothing,
-                       counterExamples::Vector{CounterExample} = CounterExample[])::Tuple{StatusCode, Vector}
+                       verifyCandidateCLFFunc=verifyCandidateCLF,
+                       counterExamples::CounterExamples=CounterExample[])::Tuple{StatusCode, Vector}
 
     lfs::LyapunovFunctions = []
     for (x0, xT) in lines
@@ -41,10 +43,18 @@ function synthesizeCLF(lines::Vector{Tuple{Vector{Float64}, Vector{Float64}}},
 
         println("Plotting ...")
         plotFunc(iter, counterExamples, env, params, lfs)
-        trajectories = simulateWithCLFs(lfs, counterExamples, env;
-                                         numSample=100, numStep=50)
-        clfjl.plotTrajectories3D(trajectories, lfs, env; imgFileDir=params.imgFileDir, filename="$(iter)withVoronoiControl", numTraj=10)
 
+        println("Simulating with the Voronoi Controller if the candidate Lyapunov is safe ...")
+        trajectories = simulateWithCLFs(lfs, counterExamples, env;
+                                        numSample=10000, numStep=50, withVoronoiControl=true)
+        numSafe = sum([traj.status == SIM_TERMINATED for traj in trajectories])
+        allSafe = all([traj.status == SIM_TERMINATED for traj in trajectories])
+        clfjl.plotTrajectories(trajectories, lfs, env; imgFileDir=params.imgFileDir, filename="$(iter)withVoronoiControl", numTraj=10)
+        params.print && println("|-- LEARNING: Voronoi Controller Safety: ", numSafe / length(trajectories))
+        if allSafe && length(counterExamples) > 0
+            @save joinpath(params.lfsFileDir, "learnedCLFs.jld2") lfs counterExamples env
+            return PROB_SAFE_LYAP_FOUND, lfs
+        end
 
         params.print && println("|-- Generator Lyapunov Gap: ", genLyapunovGap)
         if genLyapunovGap < params.thresholdLyapunovGapForGenerator
@@ -53,12 +63,11 @@ function synthesizeCLF(lines::Vector{Tuple{Vector{Float64}, Vector{Float64}}},
         end
 
         (x::Vector{<:Real},
-         verLyapunovGap::Real) = verifyCandidateCLF(counterExamples,
+         verLyapunovGap::Real) = verifyCandidateCLFFunc(counterExamples,
                                                     lfs,
                                                     env,
                                                     solver,
-                                                    params.optDim,
-                                                   params.thresholdLyapunovGapForVerifier)
+                                                    params.optDim)
 
         params.print && println("|-- CE: ", x, ", ", verLyapunovGap)
         if verLyapunovGap < params.thresholdLyapunovGapForVerifier
@@ -72,11 +81,10 @@ function synthesizeCLF(lines::Vector{Tuple{Vector{Float64}, Vector{Float64}}},
         end
 
         params.print && println("Sampling ...")
-        sampleFunc(counterExamples, x, env; xT=Vector{Float64}())
+        sampleFunc(counterExamples, x, env)
     end
     iter = Inf
     plotFunc(iter, counterExamples, env, params, lfs)
 
     return MAX_ITER_REACHED, []
 end
-

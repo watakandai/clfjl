@@ -135,12 +135,12 @@ function plot2DCLF(iter, counterExamples, env, params, lfs; regions=nothing, fil
     plotEnv(env)
     plotUnreachableRegion(env, regions=regions)
     dxy = 0.1 * (env.workspace.ub - env.workspace.lb)
-    x = range(env.workspace.lb[1]-dxy[1], env.workspace.ub[1]+dxy[1], length=100)
-    y = range(env.workspace.lb[2]-dxy[2], env.workspace.ub[2]+dxy[2], length=100)
+    X = range(env.workspace.lb[1]-dxy[1], env.workspace.ub[1]+dxy[1], length=100)
+    Y = range(env.workspace.lb[2]-dxy[2], env.workspace.ub[2]+dxy[2], length=100)
     Vtemp(x_, y_) = clfjl.V([x_, y_], lfs)
-    z = @. Vtemp(x', y)
-    contour!(x, y, Vtemp, levels=[0], color=:red, style=:dot, linewidth=2, legend=:none)
-    contour!(x, y, z, levels=100, color=:turbo, colorbar=true)
+    Z = @. Vtemp(X', Y)
+    contour!(X, Y, Vtemp, levels=[0], color=:red, style=:dot, linewidth=2, legend=:none)
+    contour!(X, Y, Z, levels=100, color=:turbo, colorbar=true)
 
     if length(counterExamples) == 0
         savefigure(params.imgFileDir, "$filename$iter.png")
@@ -159,16 +159,19 @@ function plot2DCLF(iter, counterExamples, env, params, lfs; regions=nothing, fil
     Y_ = map(c -> c.x[2], unsafeCes)
     scatter!(X_, Y_, markersize=2, color=:white)
 
-    # xmin = Float64(env.workspace.lb[1])
-    # xmax = Float64(env.workspace.ub[1])
-    # ymin = Float64(env.workspace.lb[2])
-    # ymax = Float64(env.workspace.ub[2])
+    xmin = Float64(env.workspace.lb[1])
+    xmax = Float64(env.workspace.ub[1])
+    ymin = Float64(env.workspace.lb[2])
+    ymax = Float64(env.workspace.ub[2])
 
-    # del, vor, _ = deldir(X, Y, [xmin, xmax, ymin, ymax], 1e-9)
-    # # Dx, Dy = edges(del)
-    # Vx, Vy = edges(vor)
+    safeCes = filter(c -> !c.isUnsafe, counterExamples)
+    X_ = map(c -> c.x[1], safeCes)
+    Y_ = map(c -> c.x[2], safeCes)
+    del, vor, _ = deldir(X_, Y_, [xmin, xmax, ymin, ymax], 1e-9)
+    # Dx, Dy = edges(del)
+    Vx, Vy = edges(vor)
 
-    # plot!(Vx, Vy, style=:dash, color=:black, label = "Voronoi")
+    plot!(Vx, Vy, style=:dash, color=:black, label = "Voronoi")
     savefigure(params.imgFileDir, "$filename$iter.png")
 end
 
