@@ -157,6 +157,7 @@ function _verifyCandidateCLF(
             bestCounterExample = counterExample
         end
     end
+    GC.gc()
     return maxGap, bestCounterExamplePoint, bestCounterExample
 end
 
@@ -241,10 +242,11 @@ function probVerifyCandidateCLF(counterExamples,
                                 env,
                                 solver,
                                 N;
-                                checkLyapunovCondition=false)
+                                checkLyapunovCondition=false,
+                                numSample::Integer=10000)
 
     trajectories = simulateWithCLFs(lfs, counterExamples, env;
-                                    numSample=10000, numStep=50, withVoronoiControl=true, checkLyapunovCondition=checkLyapunovCondition)
+                                    numSample=numSample, numStep=50, withVoronoiControl=true, checkLyapunovCondition=checkLyapunovCondition)
 
     println("Simulating with the Voronoi Controller if the candidate Lyapunov is safe ...")
     safeTraj = filter(t->t.status==SIM_TERMINATED, trajectories)

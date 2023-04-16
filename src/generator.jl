@@ -57,8 +57,10 @@ function generateCandidateCLF(counterExamples::Vector{CounterExample},
         end
     end
 
+    println("Before optimize!")
     @objective(model, Max, gap)
     optimize!(model)
+    println("After optimize!")
 
     @assert termination_status(model) == OPTIMAL
     @assert primal_status(model) == FEASIBLE_POINT
@@ -70,7 +72,12 @@ function generateCandidateCLF(counterExamples::Vector{CounterExample},
         testCLF(counterExamples, lfs, value(gap))
     end
 
-    return lfs, objective_value(model)
+    obj = objective_value(model)
+
+    # gc()
+    GC.gc()
+
+    return lfs, obj
 end
 
 

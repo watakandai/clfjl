@@ -7,6 +7,19 @@ include("../src/clfjl.jl")
 @load  "examples/mpc/learnedCLFs.jld2" lfs counterExamples env
 
 
+println(map(string, fieldnames(typeof(counterExamples[1]))))
+
+selectedAttributes = ["x", "y", "A", "b", "isUnsafe"]
+header = clfjl.selectCounterExampleAttributes(counterExamples[1], selectedAttributes)
+clfjl.exportCounterExamples("examples/mpc/counterExamples.csv", counterExamples, selectedAttributes)
+selectedAttributes = Dict("initSet" => Dict("lb" => Dict(), "ub" => Dict()),
+                          "termSet" => Dict("lb" => Dict(), "ub" => Dict()),
+                          "workspace" => Dict("lb" => Dict(), "ub" => Dict()),
+                          "numStateDim" => Dict())
+clfjl.exportEnv("examples/mpc/env.yaml", env; attrs=selectedAttributes)
+
+
+@assert false
 # solver() = Model(optimizer_with_attributes(() -> Gurobi.Optimizer(GUROBI_ENV),
 # "OutputFlag"=>false))
 N = length(env.workspace.lb)

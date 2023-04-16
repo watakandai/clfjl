@@ -22,17 +22,38 @@ function main(;initLBs::Vector{<:Real},
                N::Integer,
                lines=Vector{Tuple{Vector{Float64}, Vector{Float64}}}())
 
+    # Dynamics: X = [y, θ], U=[ω]
+    velocity = 0.1
+    Ad = [1 0;
+        velocity 1]
+    Bd = [1, 0][:, :]       # [:,:] converts vec to matrix
+    # Weights
+    Q = spdiagm([0.1, 1])              # Weights for Xs from 0:N-1
+
+    # for iStack in 5:nStack
+    iStack = 6
+
+    lines_ = map(l -> (repeat(l[1], iStack), repeat(l[2], iStack)), lines)
+
     # Constraints
-    initSet = clfjl.HyperRectangle(initLBs, initUBs)
-    termSet = clfjl.HyperRectangle(termLBs, termUBs)
-    workspace = clfjl.HyperRectangle(boundLBs, boundUBs)
-    inputSet = clfjl.HyperRectangle(inputLBs, inputUBs)
+    initLBs_ = repeat(initLBs, iStack)
+    initUBs_ = repeat(initUBs, iStack)
+    termLBs_ = repeat(termLBs, iStack)
+    termUBs_ = repeat(termUBs, iStack)
+    boundLBs_ = repeat(boundLBs, iStack)
+    boundUBs_ = repeat(boundUBs, iStack)
+    inputLBs_ = repeat(inputLBs, iStack)
+    inputUBs_ = repeat(inputUBs, iStack)
+    initSet = clfjl.HyperRectangle(initLBs_, initUBs_)
+    termSet = clfjl.HyperRectangle(termLBs_, termUBs_)
+    workspace = clfjl.HyperRectangle(boundLBs_, boundUBs_)
+    inputSet = clfjl.HyperRectangle(inputLBs_, inputUBs_)
 
     params = clfjl.Parameters(
-        optDim=N,
-        imgFileDir=joinpath(@__DIR__, "output$(N)D"),
+        optDim=N*iStack,
+        imgFileDir=joinpath(@__DIR__, "Stack", "output$(N*iStack)D"),
         lfsFileDir=@__DIR__,
-        maxIteration=200,
+        maxIteration=1000,
         maxLyapunovGapForGenerator=10,
         maxLyapunovGapForVerifier=10,
         thresholdLyapunovGapForGenerator=1e-12,
@@ -41,38 +62,35 @@ function main(;initLBs::Vector{<:Real},
         padding=true
     )
 
-    env::clfjl.Env = clfjl.Env(numStateDim=N,
-                               numSpaceDim=N,
-                               initSet=initSet,
-                               termSet=termSet,
-                               workspace=workspace)
+    env = clfjl.Env(numStateDim=N*iStack,
+                    numSpaceDim=N*iStack,
+                    initSet=initSet,
+                    termSet=termSet,
+                    workspace=workspace)
 
     "Setup Gurobi"
     solver() = Model(optimizer_with_attributes(() -> Gurobi.Optimizer(GUROBI_ENV),
                                             "OutputFlag"=>false))
 
-    "Sample a trajectory for the Dubin's Car model using the MPC contoller"
-    function sampleSimpleCar2D(counterExamples::Vector{clfjl.CounterExample},
-        x0::Vector{<:Real},
-        env::clfjl.Env;
-        xT::Vector{<:Real}=Float64[])
 
-        # Dynamics: X = [y, θ], U=[ω]
-        velocity = 0.1
-        Ad = [1 0;
-            velocity 1]
-        Bd = [1, 0][:, :]       # [:,:] converts vec to matrix
-        # Weights
-        (nx, nu) = size(Bd)
-        Q = spdiagm([0.1, 1])              # Weights for Xs from 0:N-1
-        QN = Q                        # Weights for the terminal state X at N (Xn or xT)
+    "Sample a trajectory for the Dubin's Car model using the MPC contoller"
+    function sampleSimpleCar(counterExamples::Vector{clfjl.CounterExample},
+                                x0::Vector{<:Real},
+                                env::clfjl.Env;
+                                xT::Vector{<:Real}=Float64[])
+
+        Ad_ = kron(I(iStack), Ad)
+        Bd_ = kron(I(iStack), Bd)
+        Q_ = kron(I(iStack), Q)
+        QN = Q_                        # Weights for the terminal state X at N (Xn or xT)
+        (nx, nu) = size(Bd_)
         R = 1 * speye(nu)
         RD = 1 * speye(nu)
-        numHorizon = 10
 
+        numHorizon = 10
         function simulateSimpleCar(x0_, xT_, env_, numStep_)
             return clfjl.simulateMPC(x0_, xT_, env_, numStep_,
-                            Ad, Bd, Q, R, QN, RD, numHorizon, inputSet,
+                            Ad_, Bd_, Q_, R, QN, RD, numHorizon, inputSet,
                             useSet=false)
         end
 
@@ -84,18 +102,19 @@ function main(;initLBs::Vector{<:Real},
     # 1. LV x LC: useProbVerifier=false, checkLyapunovCondition doesn't matter
     # 2. PSV1 x PSC: useProbVerifier=true, checkLyapunovCondition=false
     # 3. PSV2 x PSC: useProbVerifier=true, checkLyapunovCondition=true
-    useProbVerifier = false
-    checkLyapunovCondition = true
+    useProbVerifier = true
+    checkLyapunovCondition = false
 
     vfunc(args...) = clfjl.probVerifyCandidateCLF(
-        args...; checkLyapunovCondition=checkLyapunovCondition)
+        args...; checkLyapunovCondition=checkLyapunovCondition, numSample=1000)
 
     if useProbVerifier
-        @time clfjl.synthesizeCLF(lines, params, env, solver, sampleSimpleCar2D;
-                                  verifyCandidateCLFFunc=vfunc)
+        @time clfjl.synthesizeCLF(lines_, params, env, solver, sampleSimpleCar;
+                                verifyCandidateCLFFunc=vfunc)
     else
-        @time clfjl.synthesizeCLF(lines, params, env, solver, sampleSimpleCar2D)
+        @time clfjl.synthesizeCLF(lines_, params, env, solver, sampleSimpleCar)
     end
+
 end
 
 

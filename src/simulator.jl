@@ -115,13 +115,19 @@ function simulateWithCLFs(lfs::LyapunovFunctions,
     function rndX()
         return env.initSet.lb + rand(n) .* (env.initSet.ub - env.initSet.lb)
     end
-    return [simulateWithCLFs(rndX(),
-                             lfs,
-                             counterExamples,
-                             env;
-                             numStep=numStep,
-                             withVoronoiControl=withVoronoiControl)
-                             for i in 1:numSample]
+    return map(i -> simulateWithCLFs(rndX(),
+                                     lfs,
+                                     counterExamples,
+                                     env;
+                                     numStep=numStep,
+                                     withVoronoiControl=withVoronoiControl), 1:numSample)
+    # return [simulateWithCLFs(rndX(),
+    #                          lfs,
+    #                          counterExamples,
+    #                          env;
+    #                          numStep=numStep,
+    #                          withVoronoiControl=withVoronoiControl)
+    #                          for i in 1:numSample]
 end
 
 

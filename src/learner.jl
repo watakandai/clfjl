@@ -41,20 +41,21 @@ function synthesizeCLF(lines::Vector{Tuple{Vector{Float64}, Vector{Float64}}},
                                                       params.maxLyapunovGapForGenerator,
                                                       params.thresholdLyapunovGapForGenerator)
 
-        println("Plotting ...")
-        plotFunc(iter, counterExamples, env, params, lfs)
+        # println("Plotting ...")
+        # plotFunc(iter, counterExamples, env, params, lfs)
 
-        println("Simulating with the Voronoi Controller if the candidate Lyapunov is safe ...")
-        trajectories = simulateWithCLFs(lfs, counterExamples, env;
-                                        numSample=10000, numStep=50, withVoronoiControl=true)
-        numSafe = sum([traj.status == SIM_TERMINATED for traj in trajectories])
-        allSafe = all([traj.status == SIM_TERMINATED for traj in trajectories])
-        clfjl.plotTrajectories(trajectories, lfs, env; imgFileDir=params.imgFileDir, filename="$(iter)withVoronoiControl", numTraj=10)
-        params.print && println("|-- LEARNING: Voronoi Controller Safety: ", numSafe / length(trajectories))
-        if allSafe && length(counterExamples) > 0
-            @save joinpath(params.lfsFileDir, "learnedCLFs.jld2") lfs counterExamples env
-            return PROB_SAFE_LYAP_FOUND, lfs
-        end
+        # println("Simulating with the Voronoi Controller if the candidate Lyapunov is safe ...")
+        # trajectories = simulateWithCLFs(lfs, counterExamples, env;
+        #                                 numSample=10000, numStep=50, withVoronoiControl=true)
+        # numSafe = sum([traj.status == SIM_TERMINATED for traj in trajectories])
+        # allSafe = all([traj.status == SIM_TERMINATED for traj in trajectories])
+        # clfjl.plotTrajectories(trajectories, lfs, env; imgFileDir=params.imgFileDir, filename="$(iter)withVoronoiControl", numTraj=10)
+
+        # params.print && println("|-- LEARNING: Voronoi Controller Safety: ", numSafe / length(trajectories))
+        # if allSafe && length(counterExamples) > 0
+        #     postProcess(params, lfs, counterExamples, env)
+        #     return PROB_SAFE_LYAP_FOUND, lfs
+        # end
 
         params.print && println("|-- Generator Lyapunov Gap: ", genLyapunovGap)
         if genLyapunovGap < params.thresholdLyapunovGapForGenerator
@@ -73,9 +74,7 @@ function synthesizeCLF(lines::Vector{Tuple{Vector{Float64}, Vector{Float64}}},
         if verLyapunovGap < params.thresholdLyapunovGapForVerifier
             if length(lines) > 0 || length(counterExamples) > 0
                 println("Valid controller: terminated")
-                @save joinpath(params.lfsFileDir, "learnedCLFs.jld2") lfs counterExamples env
-                trajectories = simulateWithCLFs(lfs, counterExamples, env; numStep=30)
-                plotTrajectories(trajectories, lfs, env; imgFileDir=params.imgFileDir)
+                postProcess(params, lfs, counterExamples, env)
                 return CONTROLLER_FOUND, lfs
             end
         end
@@ -87,4 +86,28 @@ function synthesizeCLF(lines::Vector{Tuple{Vector{Float64}, Vector{Float64}}},
     plotFunc(iter, counterExamples, env, params, lfs)
 
     return MAX_ITER_REACHED, []
+end
+
+
+function postProcess(params, lfs, counterExamples, env)
+
+    imgFileDir = params.imgFileDir
+    if !isdir(imgFileDir)
+        mkpath(imgFileDir)
+    end
+
+    @save joinpath(params.imgFileDir, "learnedCLFs.jld2") lfs counterExamples env
+
+    trajectories = simulateWithCLFs(lfs, counterExamples, env; numStep=30)
+    plotTrajectories(trajectories, lfs, env; imgFileDir=params.imgFileDir)
+
+    csvfile = joinpath(params.imgFileDir, "counterExamples.csv")
+    exportCounterExamples(csvfile, counterExamples, ["isUnsafe", "x", "A", "b"])
+
+    yamlfile = joinpath(params.imgFileDir, "env.yaml")
+    selectedAttributes = Dict("initSet" => Dict("lb" => Dict(), "ub" => Dict()),
+                            "termSet" => Dict("lb" => Dict(), "ub" => Dict()),
+                            "workspace" => Dict("lb" => Dict(), "ub" => Dict()),
+                            "numStateDim" => Dict())
+    exportEnv(yamlfile, env; attrs=selectedAttributes)
 end

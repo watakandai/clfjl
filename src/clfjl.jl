@@ -120,5 +120,6 @@ include("plotFunc.jl")
 include("prechecker.jl")
 include("decomposition.jl")
 include("simulator.jl")
+include("io.jl")
 
 end # module
