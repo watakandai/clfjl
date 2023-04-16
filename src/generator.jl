@@ -1,3 +1,18 @@
+function emptyCLgenerator(counterExamples::Vector{CounterExample},
+                          env::Env,
+                          solver,
+                          N::Integer,
+                          maxLyapunovGapForGenerator::Real,
+                          thresholdLyapunovGapForGenerator::Real
+                          )::Tuple{LyapunovFunctions, Real}
+    a = zeros(N)
+    b = 0
+    lfs = [LyapunovFunction(a, b)]
+    positiveGap = 1
+    return lfs, positiveGap
+end
+
+
 function generateCandidateCLF(counterExamples::Vector{CounterExample},
                               env::Env,
                               solver,

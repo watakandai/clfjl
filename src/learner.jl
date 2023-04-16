@@ -13,7 +13,8 @@ function synthesizeCLF(lines::Vector{Tuple{Vector{Float64}, Vector{Float64}}},
                        solver,
                        sampleFunc;
                        plotFunc=(args...)->nothing,
-                       verifyCandidateCLFFunc=verifyCandidateCLF,
+                       verifierFunc=verifyCandidateCLF,
+                       generatorFunc=generateCandidateCLF,
                        counterExamples::CounterExamples=CounterExample[])::Tuple{StatusCode, Vector}
 
     lfs::LyapunovFunctions = []
@@ -34,12 +35,12 @@ function synthesizeCLF(lines::Vector{Tuple{Vector{Float64}, Vector{Float64}}},
         end
 
         (lfs,
-         genLyapunovGap::Real) = generateCandidateCLF(counterExamples,
-                                                      env,
-                                                      solver,
-                                                      params.optDim,
-                                                      params.maxLyapunovGapForGenerator,
-                                                      params.thresholdLyapunovGapForGenerator)
+         genLyapunovGap::Real) = generatorFunc(counterExamples,
+                                               env,
+                                               solver,
+                                               params.optDim,
+                                               params.maxLyapunovGapForGenerator,
+                                               params.thresholdLyapunovGapForGenerator)
 
         # println("Plotting ...")
         # plotFunc(iter, counterExamples, env, params, lfs)
@@ -64,11 +65,11 @@ function synthesizeCLF(lines::Vector{Tuple{Vector{Float64}, Vector{Float64}}},
         end
 
         (x::Vector{<:Real},
-         verLyapunovGap::Real) = verifyCandidateCLFFunc(counterExamples,
-                                                    lfs,
-                                                    env,
-                                                    solver,
-                                                    params.optDim)
+         verLyapunovGap::Real) = verifierFunc(counterExamples,
+                                              lfs,
+                                              env,
+                                              solver,
+                                              params.optDim)
 
         params.print && println("|-- CE: ", x, ", ", verLyapunovGap)
         if verLyapunovGap < params.thresholdLyapunovGapForVerifier
@@ -98,8 +99,8 @@ function postProcess(params, lfs, counterExamples, env)
 
     @save joinpath(params.imgFileDir, "learnedCLFs.jld2") lfs counterExamples env
 
-    trajectories = simulateWithCLFs(lfs, counterExamples, env; numStep=30)
-    plotTrajectories(trajectories, lfs, env; imgFileDir=params.imgFileDir)
+    # trajectories = simulateWithCLFs(lfs, counterExamples, env; numStep=30)
+    # plotTrajectories(trajectories, lfs, env; imgFileDir=params.imgFileDir)
 
     csvfile = joinpath(params.imgFileDir, "counterExamples.csv")
     exportCounterExamples(csvfile, counterExamples, ["isUnsafe", "x", "A", "b"])

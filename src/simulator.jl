@@ -121,13 +121,6 @@ function simulateWithCLFs(lfs::LyapunovFunctions,
                                      env;
                                      numStep=numStep,
                                      withVoronoiControl=withVoronoiControl), 1:numSample)
-    # return [simulateWithCLFs(rndX(),
-    #                          lfs,
-    #                          counterExamples,
-    #                          env;
-    #                          numStep=numStep,
-    #                          withVoronoiControl=withVoronoiControl)
-    #                          for i in 1:numSample]
 end
 
 

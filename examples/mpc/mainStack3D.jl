@@ -97,16 +97,25 @@ function mainStack(iStack,
     # 1. LV x LC: useProbVerifier=false, checkLyapunovCondition doesn't matter
     # 2. PSV1 x PSC: useProbVerifier=true, checkLyapunovCondition=false
     # 3. PSV2 x PSC: useProbVerifier=true, checkLyapunovCondition=true
+    skipGenerator = true
     useProbVerifier = true
     checkLyapunovCondition = false
 
-    vfunc(args...) = clfjl.probVerifyCandidateCLF(
-        args...; checkLyapunovCondition=checkLyapunovCondition, numSample=1000)
+    if !useProbVerifier && skipGenerator
+        error("Cannot skip generator if not using PSV")
+    end
+
+    vfunc(args...) = clfjl.probVerifyCandidateCLF(args...;
+        checkLyapunovCondition=checkLyapunovCondition,
+        numSample=1000,
+        pickCounterExample=clfjl.pickRandomTstartX)
+
+    generatorFunc = skipGenerator ? clfjl.emptyCLgenerator : clfjl.generateCandidateCLF
 
     if useProbVerifier
         @time clfjl.synthesizeCLF(lines_, params, env, solver, sampleSimpleCar;
-                                verifyCandidateCLFFunc=vfunc)
-    else
+                                  verifierFunc=vfunc, generatorFunc=generatorFunc)
+     else
         @time clfjl.synthesizeCLF(lines_, params, env, solver, sampleSimpleCar)
     end
 end

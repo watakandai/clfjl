@@ -97,15 +97,24 @@ function mainStack(iStack,
     # 1. LV x LC: useProbVerifier=false, checkLyapunovCondition doesn't matter
     # 2. PSV1 x PSC: useProbVerifier=true, checkLyapunovCondition=false
     # 3. PSV2 x PSC: useProbVerifier=true, checkLyapunovCondition=true
+    skipGenerator = true
     useProbVerifier = true
     checkLyapunovCondition = false
 
-    vfunc(args...) = clfjl.probVerifyCandidateCLF(
-        args...; checkLyapunovCondition=checkLyapunovCondition, numSample=1000)
+    if !useProbVerifier && skipGenerator
+        error("Cannot skip generator if not using PSV")
+    end
+
+    vfunc(args...) = clfjl.probVerifyCandidateCLF(args...;
+        checkLyapunovCondition=checkLyapunovCondition,
+        numSample=1000,
+        pickCounterExample=clfjl.pickRandomTstartX)
+
+    generatorFunc = skipGenerator ? clfjl.emptyCLgenerator : clfjl.generateCandidateCLF
 
     if useProbVerifier
         @time clfjl.synthesizeCLF(lines_, params, env, solver, sampleSimpleCar;
-                                verifyCandidateCLFFunc=vfunc)
+                                  verifierFunc=vfunc, generatorFunc=generatorFunc)
     else
         @time clfjl.synthesizeCLF(lines_, params, env, solver, sampleSimpleCar)
     end
@@ -126,13 +135,14 @@ function main(;initLBs::Vector{<:Real},
 
     nStack = Integer(ND / N)
 
+    v = 0.1
     Ad = [1 0;
-        velocity 1]
+          v 1]
     Bd = [1, 0][:, :]       # [:,:] converts vec to matrix
     # Weights
-    Q = spdiagm([0.1, 1])              # Weights for Xs from 0:N-1
-    QN = Q_                        # Weights for the terminal state X at N (Xn or xT)
-    (nx, nu) = size(Bd_)
+    Q = spdiagm([0.1, 1])           # Weights for Xs from 0:N-1
+    QN = Q                          # Weights for the terminal state X at N (Xn or xT)
+    (nx, nu) = size(Bd)
     R = 1 * speye(nu)
     RD = 1 * speye(nu)
 
@@ -153,7 +163,7 @@ function main(;initLBs::Vector{<:Real},
                             QN,
                             R,
                             RD,
-                            ), 5:nStack)
+                            ), 1:nStack)
 end
 
 

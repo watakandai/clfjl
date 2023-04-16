@@ -243,38 +243,59 @@ function probVerifyCandidateCLF(counterExamples,
                                 solver,
                                 N;
                                 checkLyapunovCondition=false,
-                                numSample::Integer=10000)
+                                numSample::Integer=10000,
+                                pickCounterExample::Function=pickMaxVGapX)
 
     trajectories = simulateWithCLFs(lfs, counterExamples, env;
                                     numSample=numSample, numStep=50, withVoronoiControl=true, checkLyapunovCondition=checkLyapunovCondition)
 
     println("Simulating with the Voronoi Controller if the candidate Lyapunov is safe ...")
     safeTraj = filter(t->t.status==SIM_TERMINATED, trajectories)
-    unsafeTraj = filter(t->t.status!=SIM_TERMINATED, trajectories)
-    numSafe = length(safeTraj)
-    safeProb = numSafe / length(trajectories)
+    safeProb = length(safeTraj) / length(trajectories)
 
-    println("|-- Voronoi Controller Safety: $(numSafe) / $(length(trajectories))")
+    println("|-- Voronoi Controller Safety: $safeProb)")
     if safeProb==1
-        if length(counterExamples) > 0
-            # @save joinpath(params.lfsFileDir, "learnedCLFs.jld2") lfs counterExamples env
-            return zeros(N), -1
-        end
-    else
-        unsafeTraj_ = filter(t->length(t.V)>1, unsafeTraj)
-        if length(unsafeTraj_) == 0
-            x = rand(unsafeTraj).X[1]
-        else
-            # i = argmax(map(t -> t.V[end]-t.V[end-1], unsafeTraj_))
-            # x = unsafeTraj_[i].X[end]
-
-            i = argmax(map(t -> diff(t.V), unsafeTraj_))
-            t = unsafeTraj_[i]
-            ind = argmax(diff(t.V))
-            # ind = findall(diff(t.V) .> 0)[1]
-            x = t.X[ind]
-        end
+        x = zeros(N) # anything works
+        return x, -1
     end
 
+    x = pickCounterExample(trajectories)
     return x, 1
 end
+
+
+function pickMaxVGapX(trajectories)
+    unsafeTraj = filter(t->t.status!=SIM_TERMINATED, trajectories)
+    unsafeTrajWithLyapunov = filter(t->length(t.V)>1, unsafeTraj)
+
+    if length(unsafeTrajWithLyapunov) == 0
+        traj = rand(unsafeTraj)
+        x = traj.X[1]
+        return x
+    end
+
+    i = argmax(map(t -> diff(t.V), unsafeTrajWithLyapunov))
+    traj = unsafeTrajWithLyapunov[i]
+    indMaxV = argmax(diff(traj.V))
+    x = traj.X[indMaxV]
+    return x
+end
+
+
+function pickRandomTstartX(trajectories)
+    unsafeTraj = filter(t->t.status!=SIM_TERMINATED, trajectories)
+    traj = rand(unsafeTraj)
+    x = traj.X[1]
+    return x
+end
+
+
+function pickRandomTrandomX(trajectories)
+    unsafeTraj = filter(t->t.status!=SIM_TERMINATED, trajectories)
+    traj = rand(unsafeTraj)
+    i = rand(1:length(traj.X))
+    x = traj.X[i]
+    return x
+end
+
+
